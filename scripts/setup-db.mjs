@@ -34,17 +34,32 @@ async function setup() {
 
   await db.query(`
     CREATE TABLE IF NOT EXISTS clients (
-      id          UUID PRIMARY KEY,
-      name        VARCHAR(255) NOT NULL,
-      item_id     VARCHAR(255),
-      last_sync   TIMESTAMPTZ,
-      created_at  TIMESTAMPTZ DEFAULT NOW()
+      id           UUID PRIMARY KEY,
+      name         VARCHAR(255) NOT NULL,
+      portal_token VARCHAR(64)  UNIQUE NOT NULL,
+      last_sync    TIMESTAMPTZ,
+      created_at   TIMESTAMPTZ DEFAULT NOW()
     )
   `);
 
-  console.log('✅ Tabela "clients" criada!');
+  await db.query(`ALTER TABLE clients ADD COLUMN IF NOT EXISTS portal_token VARCHAR(64) UNIQUE`);
+  await db.query(`ALTER TABLE clients DROP COLUMN IF EXISTS item_id`);
+
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS items (
+      id               UUID PRIMARY KEY,
+      client_id        UUID NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
+      pluggy_item_id   VARCHAR(255) NOT NULL,
+      institution_name VARCHAR(255),
+      institution_logo TEXT,
+      created_at       TIMESTAMPTZ DEFAULT NOW()
+    )
+  `);
+
+  console.log('✅ Tabelas "clients" e "items" criadas/atualizadas!');
   console.log('\n📋 Adicione ao seu .env.local e ao Vercel:');
-  console.log('DATABASE_URL=postgresql://postgres:****@37.60.236.200:5432/extratos\n');
+  console.log('DATABASE_URL=postgresql://postgres:****@37.60.236.200:5432/extratos');
+  console.log('ADMIN_PASSWORD=sua_senha_admin\n');
 
   await db.end();
 }

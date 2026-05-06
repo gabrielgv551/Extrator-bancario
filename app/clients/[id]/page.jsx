@@ -7,24 +7,30 @@ import {
   Link2,
   RefreshCw,
   Download,
-  Wifi,
   WifiOff,
   AlertCircle,
   TrendingUp,
   TrendingDown,
   DollarSign,
+  Building2,
+  Copy,
+  Check,
+  Trash2,
 } from 'lucide-react';
 
 export default function ClientPage({ params }) {
   const { id } = use(params);
 
   const [client, setClient] = useState(null);
+  const [items, setItems] = useState([]);
   const [transactions, setTransactions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
   const [connecting, setConnecting] = useState(false);
+  const [removingId, setRemovingId] = useState(null);
   const [error, setError] = useState('');
   const [widgetReady, setWidgetReady] = useState(false);
+  const [copiedLink, setCopiedLink] = useState(false);
 
   const today = new Date().toISOString().split('T')[0];
   const ninetyDaysAgo = new Date(Date.now() - 90 * 86400000).toISOString().split('T')[0];
@@ -45,8 +51,19 @@ export default function ClientPage({ params }) {
   }, []);
 
   const fetchClient = useCallback(async () => {
-    const res = await fetch(`/api/clients/${id}`);
-    if (res.ok) setClient(await res.json());
+    const [clientRes, itemsRes] = await Promise.all([
+      fetch(`/api/clients/${id}`),
+      fetch(`/api/portal/${id}`).then(() => null).catch(() => null),
+    ]);
+    if (clientRes.ok) {
+      const data = await clientRes.json();
+      setClient(data);
+      const portalRes = await fetch(`/api/portal/${data.portalToken}`);
+      if (portalRes.ok) {
+        const portalData = await portalRes.json();
+        setItems(portalData.items);
+      }
+    }
     setLoading(false);
   }, [id]);
 
@@ -55,7 +72,7 @@ export default function ClientPage({ params }) {
   }, [fetchClient]);
 
   const fetchTransactions = async () => {
-    if (!client?.itemId) return;
+    if (items.length === 0) return;
     setSyncing(true);
     setError('');
     try {
@@ -74,33 +91,26 @@ export default function ClientPage({ params }) {
 
   const connectBank = async () => {
     if (!widgetReady) return setError('Widget ainda carregando, aguarde...');
+    if (!client?.portalToken) return setError('Token do portal não disponível.');
     setConnecting(true);
     setError('');
     try {
-      const res = await fetch('/api/connect-token', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ clientUserId: client.id }),
-      });
+      const res = await fetch(`/api/portal/${client.portalToken}/connect-token`, { method: 'POST' });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
 
       const pluggyConnect = new window.PluggyConnect({
         connectToken: data.token,
         onSuccess: async (itemData) => {
-          const itemId = itemData.item.id;
-          await fetch(`/api/clients/${id}`, {
-            method: 'PUT',
+          await fetch(`/api/portal/${client.portalToken}/items`, {
+            method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ itemId }),
+            body: JSON.stringify({ pluggyItemId: itemData.item.id }),
           });
           await fetchClient();
           setConnecting(false);
         },
-        onError: (err) => {
-          setError(`Erro na conexão: ${JSON.stringify(err)}`);
-          setConnecting(false);
-        },
+        onError: (err) => { setError(`Erro: ${JSON.stringify(err)}`); setConnecting(false); },
         onClose: () => setConnecting(false),
       });
       pluggyConnect.init();
@@ -110,8 +120,22 @@ export default function ClientPage({ params }) {
     }
   };
 
+  const removeBank = async (itemId, name) => {
+    if (!confirm(`Desconectar "${name}"?`)) return;
+    setRemovingId(itemId);
+    await fetch(`/api/portal/${client.portalToken}/items/${itemId}`, { method: 'DELETE' });
+    await fetchClient();
+    setRemovingId(null);
+  };
+
+  const copyPortalLink = () => {
+    navigator.clipboard.writeText(`${window.location.origin}/portal/${client.portalToken}`);
+    setCopiedLink(true);
+    setTimeout(() => setCopiedLink(false), 2000);
+  };
+
   const exportCSV = () => {
-    if (!client?.itemId) return;
+    if (items.length === 0) return;
     window.location.href = `/api/clients/${id}/export?from=${fromDate}&to=${toDate}`;
   };
 
@@ -163,25 +187,22 @@ export default function ClientPage({ params }) {
             <h1 className="text-base font-bold text-gray-900 leading-tight">{client.name}</h1>
             <p className="text-xs text-gray-400">Extrato Bancário</p>
           </div>
-          <div className="flex items-center gap-3">
-            {client.itemId ? (
-              <span className="inline-flex items-center gap-1.5 bg-green-100 text-green-800 px-3 py-1 rounded-full text-xs font-medium">
-                <Wifi className="w-3 h-3" />
-                Conectado
-              </span>
-            ) : (
-              <span className="inline-flex items-center gap-1.5 bg-gray-100 text-gray-500 px-3 py-1 rounded-full text-xs font-medium">
-                <WifiOff className="w-3 h-3" />
-                Não conectado
-              </span>
-            )}
+          <div className="flex items-center gap-2">
+            <button
+              onClick={copyPortalLink}
+              className="inline-flex items-center gap-1.5 text-xs border px-3 py-1.5 rounded-lg font-medium transition-colors"
+              style={copiedLink ? { background: '#dcfce7', color: '#166534', borderColor: '#bbf7d0' } : { background: '#eff6ff', color: '#1d4ed8', borderColor: '#bfdbfe' }}
+            >
+              {copiedLink ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+              {copiedLink ? 'Copiado!' : 'Link do Portal'}
+            </button>
             <button
               onClick={connectBank}
               disabled={connecting || !widgetReady}
               className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50 transition-colors"
             >
               <Link2 className="w-4 h-4" />
-              {connecting ? 'Abrindo...' : client.itemId ? 'Reconectar Banco' : 'Conectar Banco'}
+              {connecting ? 'Abrindo...' : 'Conectar Banco'}
             </button>
           </div>
         </div>
@@ -196,26 +217,37 @@ export default function ClientPage({ params }) {
           </div>
         )}
 
-        {/* Prompt to connect */}
-        {!client.itemId && (
-          <div className="bg-white rounded-xl border border-gray-200 p-10 text-center shadow-sm">
-            <WifiOff className="w-12 h-12 text-gray-300 mx-auto mb-4" />
-            <p className="text-gray-700 font-semibold text-lg">Conta bancária não conectada</p>
-            <p className="text-gray-400 text-sm mt-2 mb-6">
-              Clique em &quot;Conectar Banco&quot; no topo para vincular a conta deste cliente via Pluggy.
-            </p>
-            <button
-              onClick={connectBank}
-              disabled={connecting || !widgetReady}
-              className="inline-flex items-center gap-2 bg-blue-600 text-white px-6 py-2.5 rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50 transition-colors"
-            >
-              <Link2 className="w-4 h-4" />
-              {connecting ? 'Abrindo...' : 'Conectar Banco'}
-            </button>
+        {/* Connected banks list */}
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+          <div className="px-5 py-3 border-b border-gray-200 flex items-center justify-between">
+            <p className="text-sm font-semibold text-gray-700">Bancos conectados ({items.length})</p>
           </div>
-        )}
+          {items.length === 0 ? (
+            <div className="p-8 text-center">
+              <WifiOff className="w-10 h-10 text-gray-300 mx-auto mb-3" />
+              <p className="text-gray-500 text-sm">Nenhum banco conectado. Clique em &quot;Conectar Banco&quot; ou compartilhe o link do portal.</p>
+            </div>
+          ) : (
+            <div className="divide-y divide-gray-100">
+              {items.map((item) => (
+                <div key={item.id} className="flex items-center gap-3 px-5 py-3">
+                  {item.institutionLogo ? (
+                    <img src={item.institutionLogo} alt={item.institutionName} className="w-8 h-8 rounded-lg object-contain border border-gray-100 p-0.5" />
+                  ) : (
+                    <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center"><Building2 className="w-4 h-4 text-blue-600" /></div>
+                  )}
+                  <span className="flex-1 text-sm font-medium text-gray-900">{item.institutionName}</span>
+                  <span className="w-1.5 h-1.5 rounded-full bg-green-500 inline-block"></span>
+                  <button onClick={() => removeBank(item.id, item.institutionName)} disabled={removingId === item.id} className="text-red-400 hover:text-red-600 p-1.5 rounded-lg hover:bg-red-50 transition-colors">
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
 
-        {client.itemId && (
+        {items.length > 0 && (
           <>
             {/* Filters */}
             <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm">

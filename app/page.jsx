@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
   Users,
@@ -13,15 +14,20 @@ import {
   FileText,
   X,
   Building2,
+  Copy,
+  Check,
+  LogOut,
 } from 'lucide-react';
 
 export default function Dashboard() {
+  const router = useRouter();
   const [clients, setClients] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [showModal, setShowModal] = useState(false);
   const [newName, setNewName] = useState('');
   const [creating, setCreating] = useState(false);
+  const [copiedId, setCopiedId] = useState(null);
 
   const fetchClients = async () => {
     setLoading(true);
@@ -41,8 +47,19 @@ export default function Dashboard() {
 
   const stats = {
     total: clients.length,
-    connected: clients.filter((c) => c.itemId).length,
     synced: clients.filter((c) => c.lastSync).length,
+  };
+
+  const logout = async () => {
+    await fetch('/api/admin/logout', { method: 'POST' });
+    router.push('/login');
+  };
+
+  const copyPortalLink = (client) => {
+    const url = `${window.location.origin}/portal/${client.portalToken}`;
+    navigator.clipboard.writeText(url);
+    setCopiedId(client.id);
+    setTimeout(() => setCopiedId(null), 2000);
   };
 
   const createClient = async (e) => {
@@ -87,22 +104,30 @@ export default function Dashboard() {
               <p className="text-xs text-gray-400">Powered by Pluggy</p>
             </div>
           </div>
-          <button
-            onClick={() => setShowModal(true)}
-            className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors"
-          >
-            <Plus className="w-4 h-4" />
-            Novo Cliente
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setShowModal(true)}
+              className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors"
+            >
+              <Plus className="w-4 h-4" />
+              Novo Cliente
+            </button>
+            <button
+              onClick={logout}
+              className="flex items-center gap-2 text-gray-500 border border-gray-300 px-3 py-2 rounded-lg text-sm hover:bg-gray-50 transition-colors"
+              title="Sair"
+            >
+              <LogOut className="w-4 h-4" />
+            </button>
+          </div>
         </div>
       </header>
 
       <main className="max-w-6xl mx-auto px-6 py-8">
         {/* Stats */}
-        <div className="grid grid-cols-3 gap-4 mb-8">
+        <div className="grid grid-cols-2 gap-4 mb-8">
           {[
             { label: 'Total de Clientes', value: stats.total, icon: Users, bg: 'bg-blue-100', fg: 'text-blue-600' },
-            { label: 'Contas Conectadas', value: stats.connected, icon: Wifi, bg: 'bg-green-100', fg: 'text-green-600' },
             { label: 'Já Sincronizados', value: stats.synced, icon: RefreshCw, bg: 'bg-purple-100', fg: 'text-purple-600' },
           ].map(({ label, value, icon: Icon, bg, fg }) => (
             <div key={label} className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm">
@@ -133,7 +158,7 @@ export default function Dashboard() {
             <thead>
               <tr className="border-b border-gray-200 bg-gray-50 text-left">
                 <th className="px-5 py-3 font-semibold text-gray-600">Cliente</th>
-                <th className="px-5 py-3 font-semibold text-gray-600">Banco</th>
+                <th className="px-5 py-3 font-semibold text-gray-600">Link do Portal</th>
                 <th className="px-5 py-3 font-semibold text-gray-600">Última Sync</th>
                 <th className="px-5 py-3 font-semibold text-gray-600 text-right">Ações</th>
               </tr>
@@ -159,17 +184,16 @@ export default function Dashboard() {
                   >
                     <td className="px-5 py-3.5 font-medium text-gray-900">{client.name}</td>
                     <td className="px-5 py-3.5">
-                      {client.itemId ? (
-                        <span className="inline-flex items-center gap-1.5 bg-green-100 text-green-800 px-2.5 py-1 rounded-full text-xs font-medium">
-                          <Wifi className="w-3 h-3" />
-                          Conectado
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center gap-1.5 bg-gray-100 text-gray-500 px-2.5 py-1 rounded-full text-xs font-medium">
-                          <WifiOff className="w-3 h-3" />
-                          Não conectado
-                        </span>
-                      )}
+                      <button
+                        onClick={() => copyPortalLink(client)}
+                        className="inline-flex items-center gap-1.5 text-xs border px-2.5 py-1 rounded-full font-medium transition-colors"
+                        style={copiedId === client.id
+                          ? { background: '#dcfce7', color: '#166534', borderColor: '#bbf7d0' }
+                          : { background: '#eff6ff', color: '#1d4ed8', borderColor: '#bfdbfe' }}
+                      >
+                        {copiedId === client.id ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+                        {copiedId === client.id ? 'Copiado!' : 'Copiar link'}
+                      </button>
                     </td>
                     <td className="px-5 py-3.5 text-gray-500 text-xs">{formatDate(client.lastSync)}</td>
                     <td className="px-5 py-3.5">
