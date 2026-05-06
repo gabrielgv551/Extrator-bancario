@@ -5,12 +5,13 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "next start"
+    "start": "next start",
+    "setup-db": "node scripts/setup-db.mjs"
   },
   "dependencies": {
-    "@upstash/redis": "^1.38.0",
     "lucide-react": "^0.378.0",
     "next": "^15.3.2",
+    "pg": "^8.20.0",
     "react": "^18",
     "react-dom": "^18",
     "uuid": "^11.0.5"
