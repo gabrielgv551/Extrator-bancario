@@ -1,0 +1,248 @@
+'use client';
+
+import { useState, useEffect } from 'react';
+import Link from 'next/link';
+import {
+  Users,
+  Wifi,
+  WifiOff,
+  RefreshCw,
+  Plus,
+  Search,
+  Trash2,
+  FileText,
+  X,
+  Building2,
+} from 'lucide-react';
+
+export default function Dashboard() {
+  const [clients, setClients] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState('');
+  const [showModal, setShowModal] = useState(false);
+  const [newName, setNewName] = useState('');
+  const [creating, setCreating] = useState(false);
+
+  const fetchClients = async () => {
+    setLoading(true);
+    const res = await fetch('/api/clients');
+    const data = await res.json();
+    setClients(data);
+    setLoading(false);
+  };
+
+  useEffect(() => {
+    fetchClients();
+  }, []);
+
+  const filtered = clients.filter((c) =>
+    c.name.toLowerCase().includes(search.toLowerCase())
+  );
+
+  const stats = {
+    total: clients.length,
+    connected: clients.filter((c) => c.itemId).length,
+    synced: clients.filter((c) => c.lastSync).length,
+  };
+
+  const createClient = async (e) => {
+    e.preventDefault();
+    if (!newName.trim()) return;
+    setCreating(true);
+    const res = await fetch('/api/clients', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: newName }),
+    });
+    if (res.ok) {
+      setNewName('');
+      setShowModal(false);
+      fetchClients();
+    }
+    setCreating(false);
+  };
+
+  const deleteClient = async (id, name) => {
+    if (!confirm(`Excluir o cliente "${name}"? Esta ação não pode ser desfeita.`)) return;
+    await fetch(`/api/clients/${id}`, { method: 'DELETE' });
+    fetchClients();
+  };
+
+  const formatDate = (iso) =>
+    iso
+      ? new Date(iso).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })
+      : '—';
+
+  return (
+    <div className="min-h-screen bg-gray-50">
+      {/* Header */}
+      <header className="bg-white border-b border-gray-200 sticky top-0 z-10">
+        <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 bg-blue-600 rounded-xl flex items-center justify-center">
+              <Building2 className="w-5 h-5 text-white" />
+            </div>
+            <div>
+              <h1 className="text-base font-bold text-gray-900 leading-tight">Extrator Bancário</h1>
+              <p className="text-xs text-gray-400">Powered by Pluggy</p>
+            </div>
+          </div>
+          <button
+            onClick={() => setShowModal(true)}
+            className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors"
+          >
+            <Plus className="w-4 h-4" />
+            Novo Cliente
+          </button>
+        </div>
+      </header>
+
+      <main className="max-w-6xl mx-auto px-6 py-8">
+        {/* Stats */}
+        <div className="grid grid-cols-3 gap-4 mb-8">
+          {[
+            { label: 'Total de Clientes', value: stats.total, icon: Users, bg: 'bg-blue-100', fg: 'text-blue-600' },
+            { label: 'Contas Conectadas', value: stats.connected, icon: Wifi, bg: 'bg-green-100', fg: 'text-green-600' },
+            { label: 'Já Sincronizados', value: stats.synced, icon: RefreshCw, bg: 'bg-purple-100', fg: 'text-purple-600' },
+          ].map(({ label, value, icon: Icon, bg, fg }) => (
+            <div key={label} className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm">
+              <div className={`w-10 h-10 ${bg} rounded-lg flex items-center justify-center mb-3`}>
+                <Icon className={`w-5 h-5 ${fg}`} />
+              </div>
+              <p className="text-2xl font-bold text-gray-900">{value}</p>
+              <p className="text-sm text-gray-500 mt-0.5">{label}</p>
+            </div>
+          ))}
+        </div>
+
+        {/* Search */}
+        <div className="relative mb-4">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+          <input
+            type="text"
+            placeholder="Buscar cliente..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="w-full pl-9 pr-4 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
+        </div>
+
+        {/* Table */}
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-gray-200 bg-gray-50 text-left">
+                <th className="px-5 py-3 font-semibold text-gray-600">Cliente</th>
+                <th className="px-5 py-3 font-semibold text-gray-600">Banco</th>
+                <th className="px-5 py-3 font-semibold text-gray-600">Última Sync</th>
+                <th className="px-5 py-3 font-semibold text-gray-600 text-right">Ações</th>
+              </tr>
+            </thead>
+            <tbody>
+              {loading ? (
+                <tr>
+                  <td colSpan={4} className="text-center py-12 text-gray-400">
+                    Carregando clientes...
+                  </td>
+                </tr>
+              ) : filtered.length === 0 ? (
+                <tr>
+                  <td colSpan={4} className="text-center py-12 text-gray-400">
+                    {search ? 'Nenhum cliente encontrado' : 'Nenhum cliente cadastrado ainda. Clique em "Novo Cliente" para começar.'}
+                  </td>
+                </tr>
+              ) : (
+                filtered.map((client) => (
+                  <tr
+                    key={client.id}
+                    className="border-b border-gray-100 hover:bg-gray-50 transition-colors"
+                  >
+                    <td className="px-5 py-3.5 font-medium text-gray-900">{client.name}</td>
+                    <td className="px-5 py-3.5">
+                      {client.itemId ? (
+                        <span className="inline-flex items-center gap-1.5 bg-green-100 text-green-800 px-2.5 py-1 rounded-full text-xs font-medium">
+                          <Wifi className="w-3 h-3" />
+                          Conectado
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1.5 bg-gray-100 text-gray-500 px-2.5 py-1 rounded-full text-xs font-medium">
+                          <WifiOff className="w-3 h-3" />
+                          Não conectado
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-5 py-3.5 text-gray-500 text-xs">{formatDate(client.lastSync)}</td>
+                    <td className="px-5 py-3.5">
+                      <div className="flex items-center justify-end gap-2">
+                        <Link
+                          href={`/clients/${client.id}`}
+                          className="inline-flex items-center gap-1.5 text-blue-600 border border-blue-200 bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors"
+                        >
+                          <FileText className="w-3.5 h-3.5" />
+                          Ver Extrato
+                        </Link>
+                        <button
+                          onClick={() => deleteClient(client.id, client.name)}
+                          className="inline-flex items-center gap-1.5 text-red-600 border border-red-200 bg-red-50 hover:bg-red-100 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                          Excluir
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </main>
+
+      {/* Modal: Novo Cliente */}
+      {showModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl">
+            <div className="flex items-center justify-between mb-5">
+              <h2 className="text-lg font-bold text-gray-900">Novo Cliente</h2>
+              <button
+                onClick={() => { setShowModal(false); setNewName(''); }}
+                className="text-gray-400 hover:text-gray-600 transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <form onSubmit={createClient}>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Nome do cliente
+              </label>
+              <input
+                type="text"
+                value={newName}
+                onChange={(e) => setNewName(e.target.value)}
+                placeholder="Ex: João Silva"
+                className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 mb-5"
+                autoFocus
+              />
+              <div className="flex gap-2 justify-end">
+                <button
+                  type="button"
+                  onClick={() => { setShowModal(false); setNewName(''); }}
+                  className="px-4 py-2 text-sm text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={creating || !newName.trim()}
+                  className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
+                >
+                  {creating ? 'Criando...' : 'Criar Cliente'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
