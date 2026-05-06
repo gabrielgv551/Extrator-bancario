@@ -5,7 +5,7 @@ import { v4 as uuidv4 } from 'uuid';
 export const dynamic = 'force-dynamic';
 
 export async function GET() {
-  const clients = getClients();
+  const clients = await getClients();
   return NextResponse.json(clients);
 }
 
@@ -15,7 +15,7 @@ export async function POST(request) {
     if (!name?.trim()) {
       return NextResponse.json({ error: 'Nome obrigatório' }, { status: 400 });
     }
-    const client = createClient({ id: uuidv4(), name: name.trim() });
+    const client = await createClient({ id: uuidv4(), name: name.trim() });
     return NextResponse.json(client, { status: 201 });
   } catch (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });

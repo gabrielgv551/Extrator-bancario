@@ -5,7 +5,7 @@ export const dynamic = 'force-dynamic';
 
 export async function GET(request, { params }) {
   const { id } = await params;
-  const client = getClientById(id);
+  const client = await getClientById(id);
   if (!client) return new Response('Cliente não encontrado', { status: 404 });
   if (!client.itemId) return new Response('Conta bancária não conectada', { status: 400 });
 
