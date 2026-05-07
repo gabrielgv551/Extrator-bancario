@@ -26,6 +26,7 @@ export default function ClientPage({ params }) {
   const [transactions, setTransactions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
+  const [diagnostics, setDiagnostics] = useState([]);
   const [connecting, setConnecting] = useState(false);
   const [removingId, setRemovingId] = useState(null);
   const [error, setError] = useState('');
@@ -33,8 +34,7 @@ export default function ClientPage({ params }) {
   const [copiedLink, setCopiedLink] = useState(false);
 
   const today = new Date().toISOString().split('T')[0];
-  const ninetyDaysAgo = new Date(Date.now() - 90 * 86400000).toISOString().split('T')[0];
-  const [fromDate, setFromDate] = useState(ninetyDaysAgo);
+  const [fromDate, setFromDate] = useState('2025-01-01');
   const [toDate, setToDate] = useState(today);
 
   useEffect(() => {
@@ -51,10 +51,7 @@ export default function ClientPage({ params }) {
   }, []);
 
   const fetchClient = useCallback(async () => {
-    const [clientRes, itemsRes] = await Promise.all([
-      fetch(`/api/clients/${id}`),
-      fetch(`/api/portal/${id}`).then(() => null).catch(() => null),
-    ]);
+    const clientRes = await fetch(`/api/clients/${id}`);
     if (clientRes.ok) {
       const data = await clientRes.json();
       setClient(data);
@@ -82,6 +79,7 @@ export default function ClientPage({ params }) {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
       setTransactions(data.transactions);
+      setDiagnostics(data.diagnostics ?? []);
       fetchClient();
     } catch (e) {
       setError(e.message);
@@ -249,6 +247,29 @@ export default function ClientPage({ params }) {
 
         {items.length > 0 && (
           <>
+            {/* Diagnostics */}
+            {diagnostics.length > 0 && (
+              <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+                <div className="px-5 py-3 border-b border-gray-200">
+                  <p className="text-sm font-semibold text-gray-700">Status das contas</p>
+                </div>
+                <div className="divide-y divide-gray-100">
+                  {diagnostics.map((d, i) => {
+                    const ok = d.status === 'UPDATED' || d.status === 'PARTIAL_SUCCESS';
+                    const statusColor = ok ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700';
+                    return (
+                      <div key={i} className="flex items-center gap-3 px-5 py-3 text-sm">
+                        <span className="flex-1 font-medium text-gray-800">{d.bank}</span>
+                        <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${statusColor}`}>{d.status}</span>
+                        {ok && <span className="text-gray-500 text-xs">{d.transactions} transações · {d.accounts} conta(s)</span>}
+                        {!ok && <span className="text-yellow-600 text-xs">Aguardando sincronização da Pluggy</span>}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
             {/* Filters */}
             <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm">
               <h2 className="text-sm font-semibold text-gray-700 mb-4">Período do Extrato</h2>
