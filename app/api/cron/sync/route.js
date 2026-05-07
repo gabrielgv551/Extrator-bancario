@@ -16,19 +16,25 @@ export async function GET(request) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
+  const { searchParams } = new URL(request.url);
+  const filterClientId = searchParams.get('clientId') || null;
+  const filterItemId   = searchParams.get('itemId')   || null;
+
   const to = new Date().toISOString().split('T')[0];
   const twoDaysAgo = new Date(Date.now() - 2 * 86400000).toISOString().split('T')[0];
 
-  const clients = await getClients();
+  let clients = await getClients();
+  if (filterClientId) clients = clients.filter(c => c.id === filterClientId);
   const results = [];
 
   for (const client of clients) {
     const items = await getItemsByClientId(client.id);
     if (items.length === 0) continue;
 
+    const filteredItems = filterItemId ? items.filter(i => i.pluggyItemId === filterItemId) : items;
     let totalSaved = 0;
     let hasError = false;
-    for (const item of items) {
+    for (const item of filteredItems) {
       try {
         const firstLoad = !(await hasTransactionsByItemId(item.pluggyItemId));
         const from = firstLoad ? '2025-01-01' : twoDaysAgo;
