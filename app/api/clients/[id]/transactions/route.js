@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
-import { getClientById, getItemsByClientId, updateClient, upsertTransactions, upsertCreditTransactions, updateItemInstitution, deleteOrphanTransactions } from '@/lib/storage';
-import { getAllTransactions, getItem, getAccounts } from '@/lib/pluggy';
+import { getClientById, getItemsByClientId, updateClient, upsertTransactions, upsertCreditTransactions, upsertDebts, updateItemInstitution, deleteOrphanTransactions } from '@/lib/storage';
+import { getAllTransactions, getItem, getAccounts, getLoanAccounts } from '@/lib/pluggy';
 
 export const dynamic = 'force-dynamic';
 
@@ -43,6 +43,8 @@ export async function GET(request, { params }) {
       await upsertTransactions(id, item.pluggyItemId, bankTx);
       await upsertCreditTransactions(id, item.pluggyItemId, creditTx);
       await deleteOrphanTransactions(item.pluggyItemId, from, to, txs.map(t => t.id)).catch(() => {});
+      const loanAccounts = await getLoanAccounts(item.pluggyItemId).catch(() => []);
+      await upsertDebts(id, item.pluggyItemId, loanAccounts).catch(() => {});
       allTx.push(...txs);
       const byMonth = txs.reduce((acc, t) => {
         const m = t.date?.slice(0, 7) ?? 'unknown';
