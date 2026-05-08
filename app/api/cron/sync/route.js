@@ -2,18 +2,20 @@ import { NextResponse } from 'next/server';
 import {
   getClients, getItemsByClientId, updateClient,
   upsertTransactions, upsertCreditTransactions, upsertInvestments, upsertDebts,
-  hasTransactionsByItemId,
+  hasTransactionsByItemId, updateItemInstitution,
 } from '@/lib/storage';
-import { getAllTransactions, getInvestments, getLoanAccounts } from '@/lib/pluggy';
+import { getAllTransactions, getItem, getInvestments, getLoanAccounts } from '@/lib/pluggy';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
 
 export async function GET(request) {
+  const isVercelCron = request.headers.get('x-vercel-cron') === '1';
+  const secret = process.env.CRON_SECRET;
   const authHeader = request.headers.get('authorization');
-  const expected = `Bearer ${process.env.CRON_SECRET}`;
-  if (process.env.CRON_SECRET && authHeader !== expected) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const hasSecret = secret && authHeader === `Bearer ${secret}`;
+  if (!isVercelCron && !hasSecret) {
+    return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
   }
 
   const { searchParams } = new URL(request.url);
@@ -21,7 +23,7 @@ export async function GET(request) {
   const filterItemId   = searchParams.get('itemId')   || null;
 
   const to = new Date().toISOString().split('T')[0];
-  const twoDaysAgo = new Date(Date.now() - 2 * 86400000).toISOString().split('T')[0];
+  const twoDaysAgo = new Date(Date.now() - 7 * 86400000).toISOString().split('T')[0];
 
   let clients = await getClients();
   if (filterClientId) clients = clients.filter(c => c.id === filterClientId);
@@ -37,9 +39,19 @@ export async function GET(request) {
     for (const item of filteredItems) {
       try {
         const firstLoad = !(await hasTransactionsByItemId(item.pluggyItemId));
-        const from = firstLoad ? '2025-01-01' : twoDaysAgo;
+        const from = firstLoad ? '2026-01-01' : twoDaysAgo;
 
-        const allTx = await getAllTransactions(item.pluggyItemId, { from, to });
+        let institutionName = item.institutionName;
+        if (!institutionName) {
+          const pluggyItem = await getItem(item.pluggyItemId).catch(() => null);
+          institutionName = pluggyItem?.connector?.name ?? null;
+          if (institutionName) {
+            await updateItemInstitution(item.id, institutionName, pluggyItem?.connector?.imageUrl ?? null).catch(() => {});
+          }
+        }
+
+        const allTx = (await getAllTransactions(item.pluggyItemId, { from, to }))
+          .map(tx => ({ ...tx, institutionName }));
 
         const bankTx   = allTx.filter(tx => tx.accountType !== 'CREDIT');
         const creditTx = allTx.filter(tx => tx.accountType === 'CREDIT');

@@ -34,7 +34,7 @@ export default function ClientPage({ params }) {
   const [copiedLink, setCopiedLink] = useState(false);
 
   const today = new Date().toISOString().split('T')[0];
-  const [fromDate, setFromDate] = useState('2025-01-01');
+  const [fromDate, setFromDate] = useState('2026-01-01');
   const [toDate, setToDate] = useState(today);
 
   useEffect(() => {

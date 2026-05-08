@@ -1,5 +1,4 @@
-import { getClientById, getItemsByClientId } from '@/lib/storage';
-import { getAllTransactions } from '@/lib/pluggy';
+import { getClientById, getItemsByClientId, getTransactionsByClientId } from '@/lib/storage';
 
 export const dynamic = 'force-dynamic';
 
@@ -16,18 +15,13 @@ export async function GET(request, { params }) {
   const to = searchParams.get('to') || undefined;
 
   try {
-    const allTx = [];
-    for (const item of items) {
-      const txs = await getAllTransactions(item.pluggyItemId, { from, to });
-      allTx.push(...txs);
-    }
-    allTx.sort((a, b) => new Date(b.date) - new Date(a.date));
-    const transactions = allTx;
+    const transactions = await getTransactionsByClientId(id, { from, to });
 
-    const header = 'Data,Descrição,Tipo,Valor (R$),Saldo,Categoria,Conta,Status\n';
+    const header = 'ID,Data,Descrição,Tipo,Valor (R$),Saldo,Categoria,Conta,Tipo de Conta,Banco,Razão Social,Origem,Status\n';
     const rows = transactions
       .map((tx) =>
         [
+          tx.id,
           new Date(tx.date).toLocaleDateString('pt-BR'),
           `"${(tx.description || '').replace(/"/g, '""')}"`,
           tx.type === 'CREDIT' ? 'Entrada' : 'Saída',
@@ -35,6 +29,10 @@ export async function GET(request, { params }) {
           tx.balance ?? '',
           tx.category ?? '',
           `"${(tx.accountName || '').replace(/"/g, '""')}"`,
+          tx.accountType ?? '',
+          `"${(tx.institutionName || '').replace(/"/g, '""')}"`,
+          `"${(tx.counterpartyName || '').replace(/"/g, '""')}"`,
+          tx.source === 'credit' ? 'Cartão de Crédito' : 'Conta Bancária',
           tx.status,
         ].join(',')
       )
