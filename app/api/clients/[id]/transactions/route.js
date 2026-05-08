@@ -51,7 +51,14 @@ export async function GET(request, { params }) {
         acc[m] = (acc[m] ?? 0) + 1;
         return acc;
       }, {});
-      diagnostics.push({ bank: institutionName, status: itemStatus, accounts: accounts.length, transactions: txs.length, byMonth });
+      const allAccountTypes = accounts.map(a => ({ name: a.name, type: a.type, subtype: a.subtype }));
+      diagnostics.push({
+        bank: institutionName, status: itemStatus,
+        accounts: accounts.length, transactions: txs.length,
+        accountTypes: allAccountTypes,
+        loanAccountsFound: loanAccounts.map(a => ({ name: a.name, type: a.type, subtype: a.subtype })),
+        byMonth,
+      });
     }
 
     allTx.sort((a, b) => new Date(b.date) - new Date(a.date));
