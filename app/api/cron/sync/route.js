@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import {
   getClients, getItemsByClientId, updateClient,
-  upsertTransactions, upsertCreditTransactions, upsertInvestments, upsertDebts,
+  upsertTransactions, upsertCreditTransactions, upsertInvestments, upsertDebts, upsertDerivedDebts,
   hasTransactionsByItemId, updateItemInstitution,
 } from '@/lib/storage';
 import { getAllTransactions, getItem, getInvestments, getLoanAccounts } from '@/lib/pluggy';
@@ -78,6 +78,7 @@ export async function GET(request) {
       }
     }
 
+    await upsertDerivedDebts(client.id).catch(() => {});
     if (!hasError) {
       await updateClient(client.id, { lastSync: new Date().toISOString() });
     }

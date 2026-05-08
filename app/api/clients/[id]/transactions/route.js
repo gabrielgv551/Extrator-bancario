@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getClientById, getItemsByClientId, updateClient, upsertTransactions, upsertCreditTransactions, upsertDebts, updateItemInstitution, deleteOrphanTransactions } from '@/lib/storage';
+import { getClientById, getItemsByClientId, updateClient, upsertTransactions, upsertCreditTransactions, upsertDebts, upsertDerivedDebts, updateItemInstitution, deleteOrphanTransactions } from '@/lib/storage';
 import { getAllTransactions, getItem, getAccounts, getLoanAccounts } from '@/lib/pluggy';
 
 export const dynamic = 'force-dynamic';
@@ -61,6 +61,7 @@ export async function GET(request, { params }) {
       });
     }
 
+    await upsertDerivedDebts(id).catch(() => {});
     allTx.sort((a, b) => new Date(b.date) - new Date(a.date));
     await updateClient(id, { lastSync: new Date().toISOString() });
 
