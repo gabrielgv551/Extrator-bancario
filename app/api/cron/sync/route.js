@@ -78,7 +78,7 @@ export async function GET(request) {
       }
     }
 
-    await upsertDerivedDebts(client.id).catch(() => {});
+    await upsertDerivedDebts(client.id);
     if (!hasError) {
       await updateClient(client.id, { lastSync: new Date().toISOString() });
     }

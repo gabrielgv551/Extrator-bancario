@@ -61,7 +61,7 @@ export async function GET(request, { params }) {
       });
     }
 
-    await upsertDerivedDebts(id).catch(() => {});
+    await upsertDerivedDebts(id);
     allTx.sort((a, b) => new Date(b.date) - new Date(a.date));
     await updateClient(id, { lastSync: new Date().toISOString() });
 
