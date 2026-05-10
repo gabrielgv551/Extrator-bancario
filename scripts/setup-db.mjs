@@ -126,9 +126,10 @@ async function setup() {
       pluggy_item_id VARCHAR(255) NOT NULL,
       account_name   VARCHAR(255),
       type           VARCHAR(50),
-      balance        NUMERIC(15,2),
-      credit_limit   NUMERIC(15,2),
-      synced_at      TIMESTAMPTZ  DEFAULT NOW()
+      balance           NUMERIC(15,2),
+      credit_limit      NUMERIC(15,2),
+      institution_name  VARCHAR(255),
+      synced_at         TIMESTAMPTZ  DEFAULT NOW()
     )
   `);
 
@@ -138,6 +139,7 @@ async function setup() {
   `);
 
   await db.query(`ALTER TABLE transactions ADD COLUMN IF NOT EXISTS pluggy_item_id VARCHAR(255)`);
+  await db.query(`ALTER TABLE debts ADD COLUMN IF NOT EXISTS institution_name VARCHAR(255)`);
   await db.query(`ALTER TABLE transactions ADD COLUMN IF NOT EXISTS institution_name VARCHAR(255)`);
   await db.query(`ALTER TABLE transactions ADD COLUMN IF NOT EXISTS counterparty_name VARCHAR(255)`);
   await db.query(`ALTER TABLE credit_transactions ADD COLUMN IF NOT EXISTS institution_name VARCHAR(255)`);
