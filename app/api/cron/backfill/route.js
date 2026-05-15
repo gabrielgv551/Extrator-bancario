@@ -10,7 +10,7 @@ export const maxDuration = 60;
 
 export async function GET(request) {
   const { searchParams } = new URL(request.url);
-  const from = searchParams.get('from') || '2025-01-01';
+  const from = searchParams.get('from') || '2026-05-01';
   const to   = searchParams.get('to')   || new Date().toISOString().split('T')[0];
   const filterClientId = searchParams.get('clientId') || null;
 

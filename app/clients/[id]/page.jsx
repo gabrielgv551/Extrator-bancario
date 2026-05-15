@@ -402,7 +402,7 @@ export default function ClientPage({ params }) {
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="border-b border-gray-200 bg-gray-50 text-left">
-                        <th className="px-4 py-3 font-semibold text-gray-600 whitespace-nowrap">Data Lançamento</th>
+                        <th className="px-4 py-3 font-semibold text-gray-600 whitespace-nowrap">Data</th>
                         <th className="px-4 py-3 font-semibold text-gray-600 whitespace-nowrap">Data Transação</th>
                         <th className="px-4 py-3 font-semibold text-gray-600">Descrição</th>
                         <th className="px-4 py-3 font-semibold text-gray-600">Tipo</th>

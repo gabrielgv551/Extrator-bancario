@@ -24,7 +24,7 @@ export async function GET(request, { params }) {
       return doc;
     };
 
-    const header = 'ID,Data Lançamento,Data Transação,Descrição,Tipo,Valor (R$),Saldo,Categoria,Conta,Agência/Número,Tipo de Conta,Banco,Razão Social,CNPJ/CPF,Origem,Status\n';
+    const header = 'ID,Data,Data Transação,Descrição,Tipo,Valor (R$),Saldo,Categoria,Conta,Agência/Número,Tipo de Conta,Banco,Razão Social,CNPJ/CPF,Origem,Status\n';
     const rows = transactions
       .map((tx) =>
         [

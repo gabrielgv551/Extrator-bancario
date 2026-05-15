@@ -10,7 +10,7 @@ import { getAllTransactions, getItem, getInvestments, getLoanAccounts, updatePlu
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
 
-const FIRST_LOAD_FROM = '2026-01-01';
+const FIRST_LOAD_FROM = '2026-05-01';
 const CONCURRENCY = 20;
 
 async function processItem(client, item, sevenDaysAgo, to, fromOverride = null) {
