@@ -10,11 +10,14 @@ export async function GET(request, { params }) {
   const from = searchParams.get('from') || undefined;
   const to = searchParams.get('to') || undefined;
 
+  console.log('[tx] iniciando id=%s from=%s to=%s', id, from, to);
   try {
     const client = await getClientById(id);
+    console.log('[tx] client:', client?.id ?? 'não encontrado');
     if (!client) return NextResponse.json({ error: 'Cliente não encontrado' }, { status: 404 });
 
     const items = await getItemsByClientId(id);
+    console.log('[tx] items:', items.length);
     if (items.length === 0) {
       return NextResponse.json({ error: 'Nenhuma conta bancária conectada' }, { status: 400 });
     }
@@ -22,8 +25,11 @@ export async function GET(request, { params }) {
     const diagnostics = [];
 
     for (const item of items) {
+      console.log('[tx] item pluggyId:', item.pluggyItemId);
       const pluggyItem = await getItem(item.pluggyItemId).catch(() => null);
+      console.log('[tx] pluggyItem status:', pluggyItem?.status);
       const itemStatus = pluggyItem?.status ?? 'UNKNOWN';
+      const lastUpdatedAt = pluggyItem?.lastUpdatedAt ?? null;
       const accounts = await getAccounts(item.pluggyItemId).catch(() => []);
 
       const institutionName = item.institutionName ?? pluggyItem?.connector?.name ?? null;
@@ -31,8 +37,15 @@ export async function GET(request, { params }) {
         await updateItemInstitution(item.id, institutionName, pluggyItem?.connector?.imageUrl ?? null).catch(() => {});
       }
 
+      const connectorProducts = pluggyItem?.connector?.products ?? [];
+      const connectorName     = pluggyItem?.connector?.name ?? institutionName;
+
       if (itemStatus !== 'UPDATED' && itemStatus !== 'PARTIAL_SUCCESS') {
-        diagnostics.push({ bank: institutionName, status: itemStatus, accounts: 0, transactions: 0 });
+        diagnostics.push({
+          bank: institutionName, status: itemStatus, lastUpdatedAt,
+          accounts: 0, transactions: 0,
+          connectorProducts,
+        });
         continue;
       }
 
@@ -53,10 +66,11 @@ export async function GET(request, { params }) {
       }, {});
       const allAccountTypes = accounts.map(a => ({ name: a.name, type: a.type, subtype: a.subtype }));
       diagnostics.push({
-        bank: institutionName, status: itemStatus,
+        bank: institutionName, status: itemStatus, lastUpdatedAt,
         accounts: accounts.length, transactions: txs.length,
         accountTypes: allAccountTypes,
         loanAccountsFound: loanAccounts.map(a => ({ name: a.name, type: a.type, subtype: a.subtype })),
+        connectorProducts,
         byMonth,
       });
     }
@@ -67,6 +81,7 @@ export async function GET(request, { params }) {
 
     return NextResponse.json({ transactions: allTx, total: allTx.length, diagnostics });
   } catch (error) {
+    console.error('[transactions] erro:', error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }

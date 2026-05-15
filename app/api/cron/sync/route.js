@@ -1,13 +1,58 @@
 import { NextResponse } from 'next/server';
 import {
   getClients, getItemsByClientId, updateClient,
-  upsertTransactions, upsertCreditTransactions, upsertInvestments, upsertDebts, upsertDerivedDebts,
+  upsertTransactionsBatch, upsertCreditTransactionsBatch,
+  upsertInvestments, upsertDebts, upsertDerivedDebts,
   hasTransactionsByItemId, updateItemInstitution,
 } from '@/lib/storage';
-import { getAllTransactions, getItem, getInvestments, getLoanAccounts } from '@/lib/pluggy';
+import { getAllTransactions, getItem, getInvestments, getLoanAccounts, updatePluggyItem } from '@/lib/pluggy';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
+
+const FIRST_LOAD_FROM = '2026-01-01';
+const CONCURRENCY = 20;
+
+async function processItem(client, item, sevenDaysAgo, to, fromOverride = null) {
+  const firstLoad = !(await hasTransactionsByItemId(item.pluggyItemId));
+  const from = fromOverride ?? (firstLoad ? FIRST_LOAD_FROM : sevenDaysAgo);
+
+  const pluggyItem = await getItem(item.pluggyItemId).catch(() => null);
+  const itemStatus = pluggyItem?.status ?? 'UNKNOWN';
+
+  let institutionName = item.institutionName;
+  if (!institutionName) {
+    institutionName = pluggyItem?.connector?.name ?? null;
+    if (institutionName) {
+      await updateItemInstitution(item.id, institutionName, pluggyItem?.connector?.imageUrl ?? null).catch(() => {});
+    }
+  }
+
+  if (!['UPDATED', 'PARTIAL_SUCCESS', 'UPDATING'].includes(itemStatus)) {
+    return { client: client.name, bank: institutionName, status: 'skipped', reason: itemStatus };
+  }
+
+  const allTx = (await getAllTransactions(item.pluggyItemId, { from, to }))
+    .map(tx => ({ ...tx, institutionName }));
+
+  const bankTx   = allTx.filter(tx => tx.accountType !== 'CREDIT');
+  const creditTx = allTx.filter(tx => tx.accountType === 'CREDIT');
+
+  const savedBank   = await upsertTransactionsBatch(client.id, item.pluggyItemId, bankTx);
+  const savedCredit = await upsertCreditTransactionsBatch(client.id, item.pluggyItemId, creditTx);
+
+  const investments  = await getInvestments(item.pluggyItemId).catch(() => []);
+  const savedInv     = await upsertInvestments(client.id, item.pluggyItemId, investments);
+
+  const loanAccounts = await getLoanAccounts(item.pluggyItemId).catch(() => []);
+  const savedDebts   = await upsertDebts(client.id, item.pluggyItemId, loanAccounts);
+
+  return {
+    client: client.name, bank: institutionName, from, firstLoad,
+    synced: { bank: savedBank, credit: savedCredit, investments: savedInv, debts: savedDebts },
+    status: 'ok',
+  };
+}
 
 export async function GET(request) {
   const isVercelCron = request.headers.get('x-vercel-cron') === '1';
@@ -21,68 +66,51 @@ export async function GET(request) {
   const { searchParams } = new URL(request.url);
   const filterClientId = searchParams.get('clientId') || null;
   const filterItemId   = searchParams.get('itemId')   || null;
+  const fromOverride   = searchParams.get('from')     || null;
 
-  const to = new Date().toISOString().split('T')[0];
-  const twoDaysAgo = new Date(Date.now() - 7 * 86400000).toISOString().split('T')[0];
+  const to          = new Date().toISOString().split('T')[0];
+  const sevenDaysAgo = new Date(Date.now() - 7 * 86400000).toISOString().split('T')[0];
 
   let clients = await getClients();
   if (filterClientId) clients = clients.filter(c => c.id === filterClientId);
-  const results = [];
 
+  // Mapear itens por cliente em paralelo
+  const clientItemsMap = new Map();
+  await Promise.all(clients.map(async c => {
+    clientItemsMap.set(c.id, await getItemsByClientId(c.id));
+  }));
+
+  // Montar lista de trabalho (client, item)
+  const work = [];
   for (const client of clients) {
-    const items = await getItemsByClientId(client.id);
-    if (items.length === 0) continue;
+    const items = clientItemsMap.get(client.id) ?? [];
+    const filtered = filterItemId ? items.filter(i => i.pluggyItemId === filterItemId) : items;
+    for (const item of filtered) work.push({ client, item });
+  }
 
-    const filteredItems = filterItemId ? items.filter(i => i.pluggyItemId === filterItemId) : items;
-    let totalSaved = 0;
-    let hasError = false;
-    for (const item of filteredItems) {
-      try {
-        const firstLoad = !(await hasTransactionsByItemId(item.pluggyItemId));
-        const from = firstLoad ? '2026-01-01' : twoDaysAgo;
+  // Disparar PATCH em todos os itens em paralelo
+  await Promise.allSettled(work.map(({ item }) => updatePluggyItem(item.pluggyItemId)));
+  await new Promise(r => setTimeout(r, 3000));
 
-        let institutionName = item.institutionName;
-        if (!institutionName) {
-          const pluggyItem = await getItem(item.pluggyItemId).catch(() => null);
-          institutionName = pluggyItem?.connector?.name ?? null;
-          if (institutionName) {
-            await updateItemInstitution(item.id, institutionName, pluggyItem?.connector?.imageUrl ?? null).catch(() => {});
-          }
-        }
-
-        const allTx = (await getAllTransactions(item.pluggyItemId, { from, to }))
-          .map(tx => ({ ...tx, institutionName }));
-
-        const bankTx   = allTx.filter(tx => tx.accountType !== 'CREDIT');
-        const creditTx = allTx.filter(tx => tx.accountType === 'CREDIT');
-
-        const savedBank   = await upsertTransactions(client.id, item.pluggyItemId, bankTx);
-        const savedCredit = await upsertCreditTransactions(client.id, item.pluggyItemId, creditTx);
-
-        const investments = await getInvestments(item.pluggyItemId).catch(() => []);
-        const savedInv    = await upsertInvestments(client.id, item.pluggyItemId, investments);
-
-        const loanAccounts = await getLoanAccounts(item.pluggyItemId).catch(() => []);
-        const savedDebts   = await upsertDebts(client.id, item.pluggyItemId, loanAccounts);
-
-        totalSaved += savedBank + savedCredit + savedInv + savedDebts;
-
-        results.push({
-          client: client.name, bank: item.institutionName, from, firstLoad,
-          synced: { bank: savedBank, credit: savedCredit, investments: savedInv, debts: savedDebts },
-          status: 'ok',
-        });
-      } catch (err) {
-        hasError = true;
-        results.push({ client: client.name, bank: item.institutionName, status: 'error', message: err.message });
-      }
-    }
-
-    await upsertDerivedDebts(client.id);
-    if (!hasError) {
-      await updateClient(client.id, { lastSync: new Date().toISOString() });
+  // Processar em lotes paralelos de CONCURRENCY
+  const results = [];
+  for (let i = 0; i < work.length; i += CONCURRENCY) {
+    const batch = work.slice(i, i + CONCURRENCY);
+    const settled = await Promise.allSettled(
+      batch.map(({ client, item }) => processItem(client, item, sevenDaysAgo, to, fromOverride))
+    );
+    for (const r of settled) {
+      if (r.status === 'fulfilled') results.push(r.value);
+      else results.push({ status: 'error', message: r.reason?.message });
     }
   }
+
+  // Pós-processamento por cliente em paralelo
+  const syncedClientIds = [...new Set(work.map(({ client }) => client.id))];
+  await Promise.allSettled(syncedClientIds.map(async clientId => {
+    await upsertDerivedDebts(clientId);
+    await updateClient(clientId, { lastSync: new Date().toISOString() });
+  }));
 
   return NextResponse.json({ synced_at: new Date().toISOString(), results });
 }

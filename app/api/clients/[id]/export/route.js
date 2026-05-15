@@ -17,21 +17,31 @@ export async function GET(request, { params }) {
   try {
     const transactions = await getTransactionsByClientId(id, { from, to });
 
-    const header = 'ID,Data,Descrição,Tipo,Valor (R$),Saldo,Categoria,Conta,Tipo de Conta,Banco,Razão Social,Origem,Status\n';
+    const fmtDoc = (doc) => {
+      if (!doc) return '';
+      if (doc.length === 14) return doc.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, '$1.$2.$3/$4-$5');
+      if (doc.length === 11) return doc.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4');
+      return doc;
+    };
+
+    const header = 'ID,Data Lançamento,Data Transação,Descrição,Tipo,Valor (R$),Saldo,Categoria,Conta,Agência/Número,Tipo de Conta,Banco,Razão Social,CNPJ/CPF,Origem,Status\n';
     const rows = transactions
       .map((tx) =>
         [
           tx.id,
           new Date(tx.date).toLocaleDateString('pt-BR'),
+          tx.dateTransacted ? new Date(tx.dateTransacted).toLocaleDateString('pt-BR') : '',
           `"${(tx.description || '').replace(/"/g, '""')}"`,
           tx.type === 'CREDIT' ? 'Entrada' : 'Saída',
           tx.amount,
           tx.balance ?? '',
           tx.category ?? '',
           `"${(tx.accountName || '').replace(/"/g, '""')}"`,
+          `"${(tx.accountNumber || '').replace(/"/g, '""')}"`,
           tx.accountType ?? '',
           `"${(tx.institutionName || '').replace(/"/g, '""')}"`,
           `"${(tx.counterpartyName || '').replace(/"/g, '""')}"`,
+          fmtDoc(tx.counterpartyDocument),
           tx.source === 'credit' ? 'Cartão de Crédito' : 'Conta Bancária',
           tx.status,
         ].join(',')

@@ -145,6 +145,12 @@ async function setup() {
   await db.query(`ALTER TABLE credit_transactions ADD COLUMN IF NOT EXISTS institution_name VARCHAR(255)`);
   await db.query(`ALTER TABLE credit_transactions ADD COLUMN IF NOT EXISTS account_type VARCHAR(50)`);
   await db.query(`ALTER TABLE credit_transactions ADD COLUMN IF NOT EXISTS counterparty_name VARCHAR(255)`);
+  await db.query(`ALTER TABLE transactions ADD COLUMN IF NOT EXISTS counterparty_document VARCHAR(255)`);
+  await db.query(`ALTER TABLE transactions ADD COLUMN IF NOT EXISTS date_transacted TIMESTAMPTZ`);
+  await db.query(`ALTER TABLE credit_transactions ADD COLUMN IF NOT EXISTS date_transacted TIMESTAMPTZ`);
+  await db.query(`ALTER TABLE transactions ADD COLUMN IF NOT EXISTS account_number VARCHAR(100)`);
+  await db.query(`ALTER TABLE credit_transactions ADD COLUMN IF NOT EXISTS account_number VARCHAR(100)`);
+  await db.query(`ALTER TABLE credit_transactions ADD COLUMN IF NOT EXISTS counterparty_document VARCHAR(255)`);
 
   await db.query(`DROP VIEW IF EXISTS all_transactions`);
   await db.query(`
@@ -152,17 +158,17 @@ async function setup() {
     SELECT
       t.id, t.client_id, t.pluggy_item_id, t.date, t.description, t.type,
       t.amount, t.balance, t.category,
-      t.account_name, t.account_type, t.institution_name,
+      t.account_name, t.account_number, t.account_type, t.institution_name,
       t.counterparty_name AS razao_social,
-      t.status, t.synced_at, 'bank' AS source
+      t.status, t.date_transacted, t.synced_at, 'bank' AS source
     FROM transactions t
     UNION ALL
     SELECT
       ct.id, ct.client_id, ct.pluggy_item_id, ct.date, ct.description, ct.type,
       ct.amount, ct.balance, ct.category,
-      ct.account_name, ct.account_type, ct.institution_name,
+      ct.account_name, ct.account_number, ct.account_type, ct.institution_name,
       ct.counterparty_name AS razao_social,
-      ct.status, ct.synced_at, 'credit' AS source
+      ct.status, ct.date_transacted, ct.synced_at, 'credit' AS source
     FROM credit_transactions ct
   `);
   console.log('✅ View "all_transactions" criada/atualizada!');

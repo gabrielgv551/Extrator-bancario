@@ -261,8 +261,33 @@ export default function ClientPage({ params }) {
                       <div key={i} className="flex items-center gap-3 px-5 py-3 text-sm">
                         <span className="flex-1 font-medium text-gray-800">{d.bank}</span>
                         <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${statusColor}`}>{d.status}</span>
-                        {ok && <span className="text-gray-500 text-xs">{d.transactions} transações · {d.accounts} conta(s)</span>}
-                        {!ok && <span className="text-yellow-600 text-xs">Aguardando sincronização da Pluggy</span>}
+                        {ok && d.accounts > 0 && (
+                          <span className="text-gray-500 text-xs">
+                            {d.transactions} transações · {d.accounts} conta(s)
+                            {d.lastUpdatedAt && (
+                              <> · dados de {new Date(d.lastUpdatedAt).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}</>
+                            )}
+                          </span>
+                        )}
+                        {ok && d.accounts === 0 && (
+                          <span className="text-orange-600 text-xs">
+                            Nenhuma conta bancária encontrada na Pluggy
+                            {d.loanAccountsFound?.length > 0 && <> · {d.loanAccountsFound.length} empréstimo(s)</>}
+                            {d.connectorProducts?.length > 0 && <> · produtos: {d.connectorProducts.join(', ')}</>}
+                            {d.lastUpdatedAt && (
+                              <> · dados de {new Date(d.lastUpdatedAt).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}</>
+                            )}
+                          </span>
+                        )}
+                        {!ok && (
+                          <span className="text-yellow-600 text-xs">
+                            Aguardando sincronização da Pluggy
+                            {d.connectorProducts?.length > 0 && <> · produtos: {d.connectorProducts.join(', ')}</>}
+                            {d.lastUpdatedAt && (
+                              <> · último dado: {new Date(d.lastUpdatedAt).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}</>
+                            )}
+                          </span>
+                        )}
                       </div>
                     );
                   })}
@@ -377,13 +402,15 @@ export default function ClientPage({ params }) {
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="border-b border-gray-200 bg-gray-50 text-left">
-                        <th className="px-4 py-3 font-semibold text-gray-600 whitespace-nowrap">Data</th>
+                        <th className="px-4 py-3 font-semibold text-gray-600 whitespace-nowrap">Data Lançamento</th>
+                        <th className="px-4 py-3 font-semibold text-gray-600 whitespace-nowrap">Data Transação</th>
                         <th className="px-4 py-3 font-semibold text-gray-600">Descrição</th>
                         <th className="px-4 py-3 font-semibold text-gray-600">Tipo</th>
                         <th className="px-4 py-3 font-semibold text-gray-600 text-right whitespace-nowrap">Valor</th>
                         <th className="px-4 py-3 font-semibold text-gray-600 text-right whitespace-nowrap">Saldo</th>
                         <th className="px-4 py-3 font-semibold text-gray-600">Categoria</th>
                         <th className="px-4 py-3 font-semibold text-gray-600">Conta</th>
+                        <th className="px-4 py-3 font-semibold text-gray-600 whitespace-nowrap">Agência/Número</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -394,6 +421,9 @@ export default function ClientPage({ params }) {
                         >
                           <td className="px-4 py-2.5 text-gray-500 whitespace-nowrap text-xs">
                             {formatDate(tx.date)}
+                          </td>
+                          <td className="px-4 py-2.5 text-gray-500 whitespace-nowrap text-xs">
+                            {tx.dateTransacted ? formatDate(tx.dateTransacted) : '—'}
                           </td>
                           <td className="px-4 py-2.5 text-gray-900 max-w-xs">
                             <span className="block truncate" title={tx.description}>
@@ -425,6 +455,9 @@ export default function ClientPage({ params }) {
                           <td className="px-4 py-2.5 text-gray-500 text-xs">{tx.category || '—'}</td>
                           <td className="px-4 py-2.5 text-gray-500 text-xs whitespace-nowrap">
                             {tx.accountName}
+                          </td>
+                          <td className="px-4 py-2.5 text-gray-500 text-xs whitespace-nowrap">
+                            {tx.accountNumber || '—'}
                           </td>
                         </tr>
                       ))}
