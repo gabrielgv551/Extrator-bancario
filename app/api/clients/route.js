@@ -5,8 +5,12 @@ import { v4 as uuidv4 } from 'uuid';
 export const dynamic = 'force-dynamic';
 
 export async function GET() {
-  const clients = await getClients();
-  return NextResponse.json(clients);
+  try {
+    const clients = await getClients();
+    return NextResponse.json(clients);
+  } catch (error) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
 }
 
 export async function POST(request) {

@@ -1,8 +1,9 @@
 import { NextResponse } from 'next/server';
-import { getClientById, getItemsByClientId, updateClient, upsertTransactions, upsertCreditTransactions, upsertDebts, upsertDerivedDebts, updateItemInstitution, deleteOrphanTransactions } from '@/lib/storage';
+import { getClientById, getItemsByClientId, updateClient, upsertTransactionsBatch, upsertCreditTransactionsBatch, upsertDebts, upsertDerivedDebts, updateItemInstitution, deleteOrphanTransactions } from '@/lib/storage';
 import { getAllTransactions, getItem, getAccounts, getLoanAccounts } from '@/lib/pluggy';
 
 export const dynamic = 'force-dynamic';
+export const maxDuration = 60;
 
 export async function GET(request, { params }) {
   const { id } = await params;
@@ -53,8 +54,8 @@ export async function GET(request, { params }) {
         .map(tx => ({ ...tx, institutionName }));
       const bankTx   = txs.filter(tx => tx.accountType !== 'CREDIT');
       const creditTx = txs.filter(tx => tx.accountType === 'CREDIT');
-      await upsertTransactions(id, item.pluggyItemId, bankTx);
-      await upsertCreditTransactions(id, item.pluggyItemId, creditTx);
+      await upsertTransactionsBatch(id, item.pluggyItemId, bankTx);
+      await upsertCreditTransactionsBatch(id, item.pluggyItemId, creditTx);
       await deleteOrphanTransactions(item.pluggyItemId, from, to, txs.map(t => t.id)).catch(() => {});
       const loanAccounts = await getLoanAccounts(item.pluggyItemId).catch(() => []);
       await upsertDebts(id, item.pluggyItemId, loanAccounts).catch(() => {});

@@ -11,7 +11,6 @@ export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
 
 const FIRST_LOAD_FROM = '2026-05-01';
-const CONCURRENCY = 20;
 
 async function processItem(client, item, sevenDaysAgo, to, fromOverride = null) {
   const firstLoad = !(await hasTransactionsByItemId(item.pluggyItemId));
@@ -90,19 +89,16 @@ export async function GET(request) {
 
   // Disparar PATCH em todos os itens em paralelo
   await Promise.allSettled(work.map(({ item }) => updatePluggyItem(item.pluggyItemId)));
-  await new Promise(r => setTimeout(r, 3000));
+  await new Promise(r => setTimeout(r, 1000));
 
-  // Processar em lotes paralelos de CONCURRENCY
+  // Processar todos os itens em paralelo
   const results = [];
-  for (let i = 0; i < work.length; i += CONCURRENCY) {
-    const batch = work.slice(i, i + CONCURRENCY);
-    const settled = await Promise.allSettled(
-      batch.map(({ client, item }) => processItem(client, item, sevenDaysAgo, to, fromOverride))
-    );
-    for (const r of settled) {
-      if (r.status === 'fulfilled') results.push(r.value);
-      else results.push({ status: 'error', message: r.reason?.message });
-    }
+  const settled = await Promise.allSettled(
+    work.map(({ client, item }) => processItem(client, item, sevenDaysAgo, to, fromOverride))
+  );
+  for (const r of settled) {
+    if (r.status === 'fulfilled') results.push(r.value);
+    else results.push({ status: 'error', message: r.reason?.message });
   }
 
   // Pós-processamento por cliente em paralelo

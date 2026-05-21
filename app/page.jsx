@@ -28,12 +28,19 @@ export default function Dashboard() {
   const [newName, setNewName] = useState('');
   const [creating, setCreating] = useState(false);
   const [copiedId, setCopiedId] = useState(null);
+  const [fetchError, setFetchError] = useState('');
 
   const fetchClients = async () => {
     setLoading(true);
-    const res = await fetch('/api/clients');
-    const data = await res.json();
-    setClients(data);
+    setFetchError('');
+    try {
+      const res = await fetch('/api/clients');
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || `Erro ${res.status}`);
+      setClients(data);
+    } catch (e) {
+      setFetchError(e.message);
+    }
     setLoading(false);
   };
 
@@ -124,6 +131,14 @@ export default function Dashboard() {
       </header>
 
       <main className="max-w-6xl mx-auto px-6 py-8">
+        {/* Error */}
+        {fetchError && (
+          <div className="flex items-start gap-3 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm mb-6">
+            <span className="font-semibold">Erro ao carregar clientes:</span>
+            <span>{fetchError}</span>
+          </div>
+        )}
+
         {/* Stats */}
         <div className="grid grid-cols-2 gap-4 mb-8">
           {[
