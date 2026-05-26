@@ -16,6 +16,8 @@ import {
   Copy,
   Check,
   Trash2,
+  Pencil,
+  X,
 } from 'lucide-react';
 
 export default function ClientPage({ params }) {
@@ -32,6 +34,10 @@ export default function ClientPage({ params }) {
   const [error, setError] = useState('');
   const [widgetReady, setWidgetReady] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
+  const [editingEmpresa, setEditingEmpresa] = useState(false);
+  const [empresaInput, setEmpresaInput] = useState('');
+  const [savingEmpresa, setSavingEmpresa] = useState(false);
+  const [gestorCompanies, setGestorCompanies] = useState([]);
 
   const today = new Date().toISOString().split('T')[0];
   const [fromDate, setFromDate] = useState('2026-01-01');
@@ -55,6 +61,7 @@ export default function ClientPage({ params }) {
     if (clientRes.ok) {
       const data = await clientRes.json();
       setClient(data);
+      setEmpresaInput(data.gestorEmpresa ?? '');
       const portalRes = await fetch(`/api/portal/${data.portalToken}`);
       if (portalRes.ok) {
         const portalData = await portalRes.json();
@@ -63,6 +70,31 @@ export default function ClientPage({ params }) {
     }
     setLoading(false);
   }, [id]);
+
+  useEffect(() => {
+    fetch('/api/gestor-companies')
+      .then((r) => r.json())
+      .then((data) => Array.isArray(data) && setGestorCompanies(data))
+      .catch(() => {});
+  }, []);
+
+  const saveGestorEmpresa = async () => {
+    setSavingEmpresa(true);
+    try {
+      const res = await fetch(`/api/clients/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ gestorEmpresa: empresaInput.trim() || null }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setClient(data);
+        setEditingEmpresa(false);
+      }
+    } finally {
+      setSavingEmpresa(false);
+    }
+  };
 
   useEffect(() => {
     fetchClient();
@@ -183,7 +215,40 @@ export default function ClientPage({ params }) {
           </Link>
           <div className="flex-1">
             <h1 className="text-base font-bold text-gray-900 leading-tight">{client.name}</h1>
-            <p className="text-xs text-gray-400">Extrato Bancário</p>
+            <div className="flex items-center gap-1.5 mt-0.5">
+              {editingEmpresa ? (
+                <>
+                  <select
+                    autoFocus
+                    value={empresaInput}
+                    onChange={(e) => setEmpresaInput(e.target.value)}
+                    className="text-xs border border-blue-400 rounded px-2 py-0.5 focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white"
+                  >
+                    <option value="">— sem vínculo —</option>
+                    {gestorCompanies.map((c) => (
+                      <option key={c.slug} value={c.slug}>{c.name} ({c.slug})</option>
+                    ))}
+                  </select>
+                  <button onClick={saveGestorEmpresa} disabled={savingEmpresa} className="text-green-600 hover:text-green-700 p-0.5">
+                    <Check className="w-3.5 h-3.5" />
+                  </button>
+                  <button onClick={() => setEditingEmpresa(false)} className="text-gray-400 hover:text-gray-600 p-0.5">
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </>
+              ) : (
+                <button
+                  onClick={() => { setEmpresaInput(client.gestorEmpresa ?? ''); setEditingEmpresa(true); }}
+                  className="flex items-center gap-1 text-xs text-gray-400 hover:text-blue-600 transition-colors group"
+                  title="Vincular ao Have Gestor"
+                >
+                  <span className={client.gestorEmpresa ? 'text-blue-600 font-medium' : 'text-gray-400'}>
+                    {client.gestorEmpresa ? `gestor: ${client.gestorEmpresa}` : 'Vincular ao Gestor...'}
+                  </span>
+                  <Pencil className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity" />
+                </button>
+              )}
+            </div>
           </div>
           <div className="flex items-center gap-2">
             <button
@@ -234,7 +299,12 @@ export default function ClientPage({ params }) {
                   ) : (
                     <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center"><Building2 className="w-4 h-4 text-blue-600" /></div>
                   )}
-                  <span className="flex-1 text-sm font-medium text-gray-900">{item.institutionName}</span>
+                  <span className="flex-1 text-sm font-medium text-gray-900">
+                    {item.institutionName}
+                    {item.accountNumbers && (
+                      <span className="ml-2 text-xs font-normal text-gray-400">Conta: {item.accountNumbers}</span>
+                    )}
+                  </span>
                   <span className="w-1.5 h-1.5 rounded-full bg-green-500 inline-block"></span>
                   <button onClick={() => removeBank(item.id, item.institutionName)} disabled={removingId === item.id} className="text-red-400 hover:text-red-600 p-1.5 rounded-lg hover:bg-red-50 transition-colors">
                     <Trash2 className="w-4 h-4" />

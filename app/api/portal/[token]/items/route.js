@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getClientByToken, getItemsByClientId, addItem } from '@/lib/storage';
-import { getItem } from '@/lib/pluggy';
+import { getItem, getAccounts } from '@/lib/pluggy';
 import { v4 as uuidv4 } from 'uuid';
 
 export const dynamic = 'force-dynamic';
@@ -27,12 +27,20 @@ export async function POST(request, { params }) {
     const institutionName = pluggyItem?.connector?.name ?? 'Banco desconhecido';
     const institutionLogo = pluggyItem?.connector?.imageUrl ?? null;
 
+    const accounts = await getAccounts(pluggyItemId).catch(() => []);
+    const nums = accounts
+      .map((a) => a.bankData?.transferNumber || a.number || null)
+      .filter(Boolean);
+    const unique = [...new Set(nums)];
+    const accountNumbers = unique.length > 0 ? unique.join(', ') : null;
+
     const item = await addItem({
       id: uuidv4(),
       clientId: client.id,
       pluggyItemId,
       institutionName,
       institutionLogo,
+      accountNumbers,
     });
     return NextResponse.json(item, { status: 201 });
   } catch (error) {

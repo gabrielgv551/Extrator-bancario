@@ -169,6 +169,9 @@ export default function PortalPage({ params }) {
                     <div className="flex items-center gap-1.5 mt-0.5">
                       <span className="w-1.5 h-1.5 rounded-full bg-green-500 inline-block"></span>
                       <span className="text-xs text-gray-500">Conectado</span>
+                      {item.accountNumbers && (
+                        <span className="text-xs text-gray-400">· Conta: {item.accountNumbers}</span>
+                      )}
                     </div>
                   </div>
                   <button
