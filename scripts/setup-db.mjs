@@ -2,11 +2,33 @@ import pg from 'pg';
 
 const { Client } = pg;
 
+function parseDatabaseUrl(url) {
+  if (!url) return null;
+  try {
+    const u = new URL(url);
+    return {
+      host: u.hostname,
+      port: parseInt(u.port || '5432', 10),
+      user: u.username,
+      password: decodeURIComponent(u.password),
+      database: u.pathname.replace(/^\//, ''),
+    };
+  } catch {
+    return null;
+  }
+}
+
+const parsed = parseDatabaseUrl(process.env.DATABASE_URL);
+if (!parsed) {
+  console.error('❌ DATABASE_URL não configurada. Configure a variável de ambiente e tente novamente.');
+  process.exit(1);
+}
+
 const CONFIG = {
-  host: '37.60.236.200',
-  port: 5432,
-  user: 'postgres',
-  password: process.env.DB_PASSWORD ?? '131105Gv',
+  host: parsed.host,
+  port: parsed.port,
+  user: parsed.user,
+  password: parsed.password,
 };
 
 async function setup() {
@@ -152,6 +174,55 @@ async function setup() {
   await db.query(`ALTER TABLE credit_transactions ADD COLUMN IF NOT EXISTS account_number VARCHAR(100)`);
   await db.query(`ALTER TABLE credit_transactions ADD COLUMN IF NOT EXISTS counterparty_document VARCHAR(255)`);
   await db.query(`ALTER TABLE items ADD COLUMN IF NOT EXISTS account_numbers TEXT`);
+  await db.query(`ALTER TABLE items ADD COLUMN IF NOT EXISTS status VARCHAR(50)`);
+  await db.query(`ALTER TABLE items ADD COLUMN IF NOT EXISTS execution_status VARCHAR(100)`);
+  await db.query(`ALTER TABLE items ADD COLUMN IF NOT EXISTS error_code VARCHAR(100)`);
+  await db.query(`ALTER TABLE items ADD COLUMN IF NOT EXISTS error_message TEXT`);
+  await db.query(`ALTER TABLE items ADD COLUMN IF NOT EXISTS last_updated_at TIMESTAMPTZ`);
+  await db.query(`ALTER TABLE items ADD COLUMN IF NOT EXISTS last_error_at TIMESTAMPTZ`);
+  await db.query(`ALTER TABLE items ADD COLUMN IF NOT EXISTS sync_count INTEGER DEFAULT 0`);
+  await db.query(`ALTER TABLE items ADD COLUMN IF NOT EXISTS consecutive_errors INTEGER DEFAULT 0`);
+  await db.query(`ALTER TABLE items ADD COLUMN IF NOT EXISTS requires_reconnect BOOLEAN DEFAULT FALSE`);
+  await db.query(`ALTER TABLE items ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ`);
+  await db.query(`ALTER TABLE items ADD COLUMN IF NOT EXISTS consent_expires_at TIMESTAMPTZ`);
+  await db.query(`ALTER TABLE items ADD COLUMN IF NOT EXISTS notification_sent_at TIMESTAMPTZ`);
+  await db.query(`ALTER TABLE items ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW()`);
+
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS sync_logs (
+      id                 UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      client_id          UUID REFERENCES clients(id) ON DELETE CASCADE,
+      item_id            UUID REFERENCES items(id) ON DELETE CASCADE,
+      started_at         TIMESTAMPTZ DEFAULT NOW(),
+      finished_at        TIMESTAMPTZ,
+      status             VARCHAR(50),
+      error_message      TEXT,
+      transactions_count INTEGER DEFAULT 0
+    )
+  `);
+  await db.query(`CREATE INDEX IF NOT EXISTS idx_sync_logs_client_item ON sync_logs(client_id, item_id, started_at DESC)`);
+
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS sync_locks (
+      id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      owner       VARCHAR(255) NOT NULL,
+      started_at  TIMESTAMPTZ DEFAULT NOW(),
+      expires_at  TIMESTAMPTZ NOT NULL
+    )
+  `);
+  await db.query(`CREATE INDEX IF NOT EXISTS idx_sync_locks_expires ON sync_locks(expires_at)`);
+
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS webhook_events (
+      id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      event_id     VARCHAR(255) NOT NULL UNIQUE,
+      event        VARCHAR(100) NOT NULL,
+      item_id      VARCHAR(255),
+      payload      JSONB,
+      received_at  TIMESTAMPTZ DEFAULT NOW()
+    )
+  `);
+  await db.query(`CREATE INDEX IF NOT EXISTS idx_webhook_events_item ON webhook_events(item_id, received_at DESC)`);
 
   await db.query(`DROP VIEW IF EXISTS all_transactions`);
   await db.query(`
@@ -184,6 +255,9 @@ async function setup() {
     CREATE INDEX IF NOT EXISTS idx_transactions_item
     ON transactions(pluggy_item_id)
   `);
+
+  await db.query(`CREATE INDEX IF NOT EXISTS idx_items_deleted_at ON items(deleted_at)`);
+  await db.query(`CREATE INDEX IF NOT EXISTS idx_items_status_error ON items(status, consecutive_errors) WHERE deleted_at IS NULL`);
 
   console.log('✅ Tabelas "clients", "items" e "transactions" criadas/atualizadas!');
   console.log('\n📋 Adicione ao seu .env.local e ao Vercel:');

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
-import { getClientById, getItemsByClientId, updateClient, upsertTransactionsBatch, upsertCreditTransactionsBatch, upsertDebts, upsertDerivedDebts, updateItemInstitution, deleteOrphanTransactions } from '@/lib/storage';
-import { getAllTransactions, getItem, getAccounts, getLoanAccounts } from '@/lib/pluggy';
+import { getClientById, getItemsByClientId, getTransactionsByClientId, updateClient } from '@/lib/storage';
+import { getItem } from '@/lib/pluggy';
+import { buildItemStatusUpdates, isItemHealthy, requiresReconnectFromError } from '@/lib/status';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -11,76 +12,53 @@ export async function GET(request, { params }) {
   const from = searchParams.get('from') || undefined;
   const to = searchParams.get('to') || undefined;
 
-  console.log('[tx] iniciando id=%s from=%s to=%s', id, from, to);
+  console.log('[tx] buscando transações locais id=%s from=%s to=%s', id, from, to);
   try {
     const client = await getClientById(id);
-    console.log('[tx] client:', client?.id ?? 'não encontrado');
     if (!client) return NextResponse.json({ error: 'Cliente não encontrado' }, { status: 404 });
 
     const items = await getItemsByClientId(id);
-    console.log('[tx] items:', items.length);
-    if (items.length === 0) {
-      return NextResponse.json({ error: 'Nenhuma conta bancária conectada' }, { status: 400 });
-    }
-    const allTx = [];
     const diagnostics = [];
 
     for (const item of items) {
-      console.log('[tx] item pluggyId:', item.pluggyItemId);
-      const pluggyItem = await getItem(item.pluggyItemId).catch(() => null);
-      console.log('[tx] pluggyItem status:', pluggyItem?.status);
-      const itemStatus = pluggyItem?.status ?? 'UNKNOWN';
-      const lastUpdatedAt = pluggyItem?.lastUpdatedAt ?? null;
-      const accounts = await getAccounts(item.pluggyItemId).catch(() => []);
+      let pluggyItem = null;
+      let status = item.status || 'UNKNOWN';
+      let executionStatus = item.executionStatus || null;
+      let errorCode = item.errorCode || null;
+      let errorMessage = item.errorMessage || null;
+      let lastUpdatedAt = item.lastUpdatedAt || null;
 
-      const institutionName = item.institutionName ?? pluggyItem?.connector?.name ?? null;
-      if (!item.institutionName && institutionName) {
-        await updateItemInstitution(item.id, institutionName, pluggyItem?.connector?.imageUrl ?? null).catch(() => {});
+      try {
+        pluggyItem = await getItem(item.pluggyItemId);
+        const updates = buildItemStatusUpdates(pluggyItem);
+        status = updates.status;
+        executionStatus = updates.executionStatus;
+        errorCode = updates.errorCode;
+        errorMessage = updates.errorMessage;
+        lastUpdatedAt = updates.lastUpdatedAt;
+      } catch (err) {
+        console.warn('[tx] falha ao buscar status do item na Pluggy:', err.message);
       }
 
-      const connectorProducts = pluggyItem?.connector?.products ?? [];
-      const connectorName     = pluggyItem?.connector?.name ?? institutionName;
-
-      if (itemStatus !== 'UPDATED' && itemStatus !== 'PARTIAL_SUCCESS') {
-        diagnostics.push({
-          bank: institutionName, status: itemStatus, lastUpdatedAt,
-          accounts: 0, transactions: 0,
-          connectorProducts,
-        });
-        continue;
-      }
-
-      const txs = (await getAllTransactions(item.pluggyItemId, { from, to }))
-        .map(tx => ({ ...tx, institutionName }));
-      const bankTx   = txs.filter(tx => tx.accountType !== 'CREDIT');
-      const creditTx = txs.filter(tx => tx.accountType === 'CREDIT');
-      await upsertTransactionsBatch(id, item.pluggyItemId, bankTx);
-      await upsertCreditTransactionsBatch(id, item.pluggyItemId, creditTx);
-      await deleteOrphanTransactions(item.pluggyItemId, from, to, txs.map(t => t.id)).catch(() => {});
-      const loanAccounts = await getLoanAccounts(item.pluggyItemId).catch(() => []);
-      await upsertDebts(id, item.pluggyItemId, loanAccounts).catch(() => {});
-      allTx.push(...txs);
-      const byMonth = txs.reduce((acc, t) => {
-        const m = t.date?.slice(0, 7) ?? 'unknown';
-        acc[m] = (acc[m] ?? 0) + 1;
-        return acc;
-      }, {});
-      const allAccountTypes = accounts.map(a => ({ name: a.name, type: a.type, subtype: a.subtype }));
+      const requiresReconnect = requiresReconnectFromError(errorCode) || status === 'LOGIN_ERROR';
       diagnostics.push({
-        bank: institutionName, status: itemStatus, lastUpdatedAt,
-        accounts: accounts.length, transactions: txs.length,
-        accountTypes: allAccountTypes,
-        loanAccountsFound: loanAccounts.map(a => ({ name: a.name, type: a.type, subtype: a.subtype })),
-        connectorProducts,
-        byMonth,
+        bank: item.institutionName,
+        status,
+        executionStatus,
+        errorCode,
+        errorMessage,
+        lastUpdatedAt,
+        requiresReconnect,
+        isHealthy: isItemHealthy(status),
       });
     }
 
-    await upsertDerivedDebts(id);
-    allTx.sort((a, b) => new Date(b.date) - new Date(a.date));
+    const transactions = await getTransactionsByClientId(id, { from, to });
+    transactions.sort((a, b) => new Date(b.date) - new Date(a.date));
+
     await updateClient(id, { lastSync: new Date().toISOString() });
 
-    return NextResponse.json({ transactions: allTx, total: allTx.length, diagnostics });
+    return NextResponse.json({ transactions, total: transactions.length, diagnostics });
   } catch (error) {
     console.error('[transactions] erro:', error);
     return NextResponse.json({ error: error.message }, { status: 500 });

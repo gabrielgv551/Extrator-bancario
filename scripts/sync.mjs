@@ -7,64 +7,51 @@
  *   DATABASE_URL          ex: postgresql://user:pass@host:5432/db
  *   PLUGGY_CLIENT_ID
  *   PLUGGY_CLIENT_SECRET
+ *   SYNC_SKIP_PATCH       se "1", não faz PATCH (só busca dados já syncados)
+ *   SYNC_SKIP_ORPHAN_DELETE  se "1", não deleta transações órfãs
+ *   SYNC_FORCE            se "1", ignora lock existente
  */
 
 import pg from 'pg';
 import { createHash } from 'crypto';
+import {
+  getItem,
+  updatePluggyItem,
+  getAllTransactions,
+  getLoanAccounts,
+  waitForItemUpdate,
+  isItemHealthy,
+  isItemUpdating,
+  isItemError,
+  requiresReconnectFromError,
+} from '../lib/pluggy.js';
+import {
+  updateItemStatus,
+  createSyncLog,
+  finishSyncLog,
+  acquireSyncLock,
+  releaseSyncLock,
+  forceReleaseSyncLock,
+} from '../lib/storage.js';
+import { syncItemData } from '../lib/sync-processor.js';
 
 const { Pool } = pg;
 const PLUGGY_BASE = 'https://api.pluggy.ai';
 const FIRST_LOAD_FROM = '2026-05-01';
 
+// ── Configurações ─────────────────────────────────────────────────────────────
+
+const SKIP_PATCH = process.env.SYNC_SKIP_PATCH === '1';
+const SKIP_ORPHAN_DELETE = process.env.SYNC_SKIP_ORPHAN_DELETE === '1';
+const SYNC_FORCE = process.env.SYNC_FORCE === '1';
+const PATCH_POLL_INTERVAL_MS = 3000;
+const PATCH_MAX_WAIT_MS = 5 * 60 * 1000; // 5 minutos
+const PLUGGY_MIN_UPDATE_FREQUENCY_MS = 60 * 60 * 1000; // Pluggy exige 1h entre updates
+const PATCH_DELAY_BETWEEN_ITEMS_MS = 5000; // evita rate limit
+
 // ── Pool PostgreSQL ───────────────────────────────────────────────────────────
 
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
-
-// ── Pluggy auth ───────────────────────────────────────────────────────────────
-
-let _cachedApiKey = null;
-let _cacheExpiry = 0;
-
-async function getApiKey() {
-  if (_cachedApiKey && Date.now() < _cacheExpiry) return _cachedApiKey;
-  const res = await fetch(`${PLUGGY_BASE}/auth`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      clientId: process.env.PLUGGY_CLIENT_ID,
-      clientSecret: process.env.PLUGGY_CLIENT_SECRET,
-    }),
-  });
-  if (!res.ok) throw new Error(`Pluggy auth falhou: ${res.status}`);
-  const data = await res.json();
-  _cachedApiKey = data.apiKey;
-  _cacheExpiry = Date.now() + 25 * 60 * 1000;
-  return _cachedApiKey;
-}
-
-async function pluggyFetch(path, options = {}) {
-  const res = await fetch(`${PLUGGY_BASE}${path}`, options);
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err.message || `Pluggy error ${res.status} em ${path}`);
-  }
-  if (res.status === 204) return null;
-  return res.json();
-}
-
-async function pluggyGet(path) {
-  const apiKey = await getApiKey();
-  return pluggyFetch(path, { headers: { 'X-API-KEY': apiKey } });
-}
-
-async function updatePluggyItem(itemId) {
-  const apiKey = await getApiKey();
-  return pluggyFetch(`/items/${itemId}`, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json', 'X-API-KEY': apiKey },
-    body: JSON.stringify({}),
-  }).catch(() => null);
-}
 
 // ── Traduções ─────────────────────────────────────────────────────────────────
 
@@ -105,9 +92,9 @@ const ACCOUNT_TYPE_PT = {
   'LOAN': 'Empréstimo', 'INVESTMENT': 'Investimento',
 };
 
-const translateCategory   = c => c ? (CATEGORY_PT[c] ?? c) : null;
+const translateCategory = c => c ? (CATEGORY_PT[c] ?? c) : null;
 const translateAccountName = n => n ? (ACCOUNT_NAME_PT[n] ?? n) : n;
-const toAccountTypePT     = t => t ? (ACCOUNT_TYPE_PT[t] ?? t) : null;
+const toAccountTypePT = t => t ? (ACCOUNT_TYPE_PT[t] ?? t) : null;
 
 function extractDateFromDescription(description, referenceDate) {
   if (!description) return null;
@@ -135,70 +122,43 @@ function extractDateFromDescription(description, referenceDate) {
   return null;
 }
 
-// ── Pluggy: buscar transações (todas as contas em paralelo) ───────────────────
-
-async function getAllTransactions(itemId, { from, to } = {}) {
-  const accountsData = await pluggyGet(`/accounts?itemId=${itemId}`);
-  const accounts = accountsData?.results ?? [];
-
-  const perAccount = await Promise.all(accounts.map(async (account) => {
-    const txs = [];
-    let page = 1;
-    let totalPages = 1;
-
-    while (page <= totalPages) {
-      let url = `/transactions?accountId=${account.id}&page=${page}&pageSize=500`;
-      if (from) url += `&from=${from}`;
-      if (to)   url += `&to=${to}`;
-
-      const data = await pluggyGet(url);
-      totalPages = data.totalPages;
-
-      for (const tx of data.results) {
-        const counterpartyName =
-          tx.type === 'DEBIT'
-            ? (tx.paymentData?.receiver?.name ?? tx.merchant?.businessName ?? tx.merchant?.name ?? null)
-            : (tx.paymentData?.payer?.name ?? null);
-        const counterpartyDocument =
-          tx.type === 'DEBIT'
-            ? (tx.paymentData?.receiver?.documentNumber?.value ?? tx.paymentData?.receiver?.document?.value ?? null)
-            : (tx.paymentData?.payer?.documentNumber?.value ?? tx.paymentData?.payer?.document?.value ?? null);
-        const accountNumber = account.bankData?.transferNumber || account.number || null;
-        txs.push({
-          ...tx,
-          category: translateCategory(tx.category),
-          accountName: translateAccountName(account.name),
-          accountType: account.type,
-          accountNumber,
-          counterpartyName,
-          counterpartyDocument,
-          dateTransacted: extractDateFromDescription(tx.description, tx.date)
-            ?? tx.creditCardMetadata?.purchaseDate
-            ?? tx.date
-            ?? null,
-        });
-      }
-      page++;
-    }
-    return txs;
-  }));
-
-  return perAccount.flat().sort((a, b) => new Date(b.date) - new Date(a.date));
-}
-
-async function getLoanAccounts(itemId) {
-  const data = await pluggyGet(`/accounts?itemId=${itemId}`);
-  const LOAN_TYPES = ['LOAN', 'FINANCING', 'CREDIT_CARD', 'MORTGAGE'];
-  return (data?.results ?? []).filter(a => LOAN_TYPES.includes(a.type) || a.subtype === 'LOAN');
-}
-
 // ── DB: upsert em batch ───────────────────────────────────────────────────────
 
 async function upsertBatch(table, clientId, pluggyItemId, transactions) {
   if (!transactions.length) return 0;
+
+  const duplicates = [];
+  const newTxs = [];
+
+  for (const tx of transactions) {
+    const { rows } = await pool.query(
+      `SELECT id FROM ${table}
+       WHERE client_id = $1
+         AND date::date = $2::date
+         AND amount = $3
+         AND description = $4`,
+      [clientId, tx.date, tx.amount, tx.description ?? '']
+    );
+
+    if (rows.length > 0) {
+      duplicates.push({ existingId: rows[0].id, newTx: tx });
+    } else {
+      newTxs.push(tx);
+    }
+  }
+
+  for (const dup of duplicates) {
+    await pool.query(
+      `UPDATE ${table}
+       SET status = $1, id = $2, synced_at = NOW()
+       WHERE id = $3`,
+      [dup.newTx.status ?? 'POSTED', dup.newTx.id, dup.existingId]
+    ).catch(() => {});
+  }
+
   const CHUNK = 200;
-  for (let c = 0; c < transactions.length; c += CHUNK) {
-    const chunk = transactions.slice(c, c + CHUNK);
+  for (let c = 0; c < newTxs.length; c += CHUNK) {
+    const chunk = newTxs.slice(c, c + CHUNK);
     const placeholders = [];
     const params = [];
     let p = 1;
@@ -229,6 +189,7 @@ async function upsertBatch(table, clientId, pluggyItemId, transactions) {
       params,
     );
   }
+
   return transactions.length;
 }
 
@@ -283,30 +244,76 @@ async function upsertDerivedDebts(clientId) {
   }
 }
 
+// ── Status helpers ────────────────────────────────────────────────────────────
+
+function normalizeItemStatus(pluggyItem) {
+  if (!pluggyItem) return { status: 'UNKNOWN', executionStatus: null, errorCode: null, errorMessage: null, lastUpdatedAt: null };
+  return {
+    status: pluggyItem.status ?? 'UNKNOWN',
+    executionStatus: pluggyItem.executionStatus ?? null,
+    errorCode: pluggyItem.error?.code ?? null,
+    errorMessage: pluggyItem.error?.message ?? pluggyItem.error?.providerMessage ?? null,
+    lastUpdatedAt: pluggyItem.lastUpdatedAt ?? null,
+  };
+}
+
+async function persistItemStatus(itemId, pluggyItem, { forceError = false } = {}) {
+  const norm = normalizeItemStatus(pluggyItem);
+  const needsReconnect = forceError || requiresReconnectFromError(norm.errorCode) || norm.status === 'LOGIN_ERROR';
+  const updates = {
+    status: norm.status,
+    executionStatus: norm.executionStatus,
+    errorCode: norm.errorCode,
+    errorMessage: norm.errorMessage,
+    lastUpdatedAt: norm.lastUpdatedAt,
+    requiresReconnect: needsReconnect,
+    incrementSyncCount: true,
+  };
+  if (isItemHealthy(norm.status) || norm.status === 'PARTIAL_SUCCESS') {
+    updates.resetConsecutiveErrors = true;
+  } else if (isItemError(norm.status)) {
+    updates.incrementConsecutiveErrors = true;
+    updates.lastErrorAt = new Date().toISOString();
+  }
+  await updateItemStatus(itemId, updates);
+}
+
 // ── Processar um item ─────────────────────────────────────────────────────────
 
+function toCamelCaseItem(item) {
+  return {
+    id: item.id,
+    clientId: item.client_id,
+    pluggyItemId: item.pluggy_item_id,
+    institutionName: item.institution_name,
+    institutionLogo: item.institution_logo,
+    accountNumbers: item.account_numbers,
+    status: item.status,
+    executionStatus: item.execution_status,
+    errorCode: item.error_code,
+    errorMessage: item.error_message,
+    lastUpdatedAt: item.last_updated_at,
+    lastErrorAt: item.last_error_at,
+    syncCount: item.sync_count,
+    consecutiveErrors: item.consecutive_errors,
+    requiresReconnect: item.requires_reconnect,
+    deletedAt: item.deleted_at,
+    consentExpiresAt: item.consent_expires_at,
+    notificationSentAt: item.notification_sent_at,
+    createdAt: item.created_at,
+  };
+}
+
 async function processItem(client, item, from, to) {
-  const pluggyItem = await pluggyGet(`/items/${item.pluggy_item_id}`).catch(() => null);
-  const status = pluggyItem?.status ?? 'UNKNOWN';
+  const localItem = toCamelCaseItem(item);
+  const result = await syncItemData(localItem, { fromOverride: from, toOverride: to, skipIfNotHealthy: true });
 
-  if (!['UPDATED', 'PARTIAL_SUCCESS', 'UPDATING'].includes(status)) {
-    return { bank: item.institution_name, status: 'skipped', reason: status };
-  }
-
-  const institutionName = item.institution_name ?? pluggyItem?.connector?.name ?? null;
-  const allTx = (await getAllTransactions(item.pluggy_item_id, { from, to }))
-    .map(tx => ({ ...tx, institutionName }));
-
-  const bankTx   = allTx.filter(tx => tx.accountType !== 'CREDIT');
-  const creditTx = allTx.filter(tx => tx.accountType === 'CREDIT');
-
-  await upsertBatch('transactions', client.id, item.pluggy_item_id, bankTx);
-  await upsertBatch('credit_transactions', client.id, item.pluggy_item_id, creditTx);
-
-  const loanAccounts = await getLoanAccounts(item.pluggy_item_id).catch(() => []);
-  await upsertDebts(client.id, item.pluggy_item_id, loanAccounts).catch(() => {});
-
-  return { bank: institutionName, status: 'ok', transactions: allTx.length };
+  return {
+    bank: result.institutionName || localItem.institutionName || 'Banco desconhecido',
+    status: result.success ? 'ok' : (result.status === 'LOGIN_ERROR' ? 'login_error' : 'error'),
+    transactions: result.transactions?.total ?? 0,
+    reason: result.reason,
+  };
 }
 
 // ── Main ──────────────────────────────────────────────────────────────────────
@@ -314,61 +321,145 @@ async function processItem(client, item, from, to) {
 async function main() {
   const filterClientId = process.argv[2] ?? null;
 
-  const to          = new Date().toISOString().split('T')[0];
+  const to = new Date().toISOString().split('T')[0];
   const sevenDaysAgo = new Date(Date.now() - 7 * 86400000).toISOString().split('T')[0];
 
-  let { rows: clients } = await pool.query(`SELECT id, name FROM clients ORDER BY created_at`);
-  if (filterClientId) clients = clients.filter(c => c.id === filterClientId);
-
-  console.log(`[sync] ${clients.length} cliente(s) | ${new Date().toISOString()}`);
-
-  for (const client of clients) {
-    const { rows: items } = await pool.query(
-      `SELECT id, pluggy_item_id, institution_name FROM items WHERE client_id = $1`,
-      [client.id],
-    );
-    if (!items.length) {
-      console.log(`  ⤷ ${client.name}: sem itens, pulando`);
-      continue;
-    }
-
-    // Verificar se é primeiro carregamento
-    const { rows: hasTx } = await pool.query(
-      `SELECT 1 FROM transactions WHERE client_id = $1 LIMIT 1`,
-      [client.id],
-    );
-    const from = hasTx.length ? sevenDaysAgo : FIRST_LOAD_FROM;
-
-    // Disparar PATCH em todos os itens em paralelo
-    await Promise.all(items.map(item => updatePluggyItem(item.pluggy_item_id)));
-    await new Promise(r => setTimeout(r, 1000));
-
-    // Processar todos os itens em paralelo
-    const results = await Promise.allSettled(
-      items.map(item => processItem(client, item, from, to)),
-    );
-
-    for (const r of results) {
-      if (r.status === 'fulfilled') {
-        const v = r.value;
-        if (v.status === 'ok')
-          console.log(`  ✓ ${client.name} / ${v.bank}: ${v.transactions} transações`);
-        else
-          console.log(`  ⤷ ${client.name} / ${v.bank}: ${v.status} (${v.reason})`);
-      } else {
-        console.error(`  ✗ ${client.name}: ${r.reason?.message}`);
-      }
-    }
-
-    await upsertDerivedDebts(client.id).catch(() => {});
-    await pool.query(`UPDATE clients SET last_sync = NOW() WHERE id = $1`, [client.id]);
+  // Lock distribuído
+  const lock = await acquireSyncLock('sync-standalone');
+  if (!lock.acquired) {
+    console.error(`[sync] lock ativo desde ${lock.existing?.started_at}. Use SYNC_FORCE=1 para ignorar.`);
+    process.exit(0);
   }
 
-  await pool.end();
-  console.log(`[sync] concluído ${new Date().toISOString()}`);
+  try {
+    let { rows: clients } = await pool.query(`SELECT id, name, last_sync FROM clients ORDER BY created_at`);
+    if (filterClientId) clients = clients.filter(c => c.id === filterClientId);
+
+    console.log(`[sync] ${clients.length} cliente(s) | ${new Date().toISOString()}`);
+    console.log(`[config] SKIP_PATCH=${SKIP_PATCH}, SKIP_ORPHAN_DELETE=${SKIP_ORPHAN_DELETE}`);
+
+    for (const client of clients) {
+      const { rows: items } = await pool.query(
+        `SELECT id, pluggy_item_id, institution_name, status, last_updated_at FROM items WHERE client_id = $1`,
+        [client.id],
+      );
+      if (!items.length) {
+        console.log(`  ⤷ ${client.name}: sem itens, pulando`);
+        continue;
+      }
+
+      // ── PATCH serial (se não estiver desabilitado) ───────────────────────────
+      if (!SKIP_PATCH) {
+        for (const item of items) {
+          let beforeItem;
+          try {
+            beforeItem = await getItem(item.pluggy_item_id);
+          } catch (err) {
+            console.log(`  ⚠ ${client.name} / ${item.institution_name}: não foi possível verificar status (${err.message})`);
+            continue;
+          }
+
+          const norm = normalizeItemStatus(beforeItem);
+          const lastUpdatedAt = norm.lastUpdatedAt ? new Date(norm.lastUpdatedAt).getTime() : 0;
+          const timeSinceUpdate = Date.now() - lastUpdatedAt;
+
+          if (norm.status === 'LOGIN_ERROR') {
+            console.log(`  🔄 ${client.name} / ${item.institution_name}: credenciais inválidas, aguardando reconexão`);
+            await persistItemStatus(item.id, beforeItem);
+            continue;
+          }
+
+          if (isItemUpdating(norm.status)) {
+            console.log(`  ⏳ ${client.name} / ${item.institution_name}: item já está atualizando, aguardando...`);
+            const ready = await waitForItemUpdate(item.pluggy_item_id, { timeoutMs: PATCH_MAX_WAIT_MS, intervalMs: PATCH_POLL_INTERVAL_MS });
+            if (ready) await persistItemStatus(item.id, ready);
+            continue;
+          }
+
+          const isPatchable = isItemHealthy(norm.status) || norm.status === 'OUTDATED';
+          if (!isPatchable) {
+            console.log(`  🔄 ${client.name} / ${item.institution_name}: status ${norm.status}, PATCH não aplicável`);
+            await persistItemStatus(item.id, beforeItem);
+            continue;
+          }
+
+          if (timeSinceUpdate < PLUGGY_MIN_UPDATE_FREQUENCY_MS) {
+            console.log(`  🔄 ${client.name} / ${item.institution_name}: PATCH pulado, último update há ${Math.round(timeSinceUpdate / 1000)}s`);
+            continue;
+          }
+
+          console.log(`  🔄 ${client.name} / ${item.institution_name}: disparando PATCH`);
+          let patchResult;
+          try {
+            patchResult = await updatePluggyItem(item.pluggy_item_id);
+          } catch (err) {
+            console.log(`    ⚠ PATCH não realizado: ${err.message}`);
+            await persistItemStatus(item.id, beforeItem, { forceError: true });
+            continue;
+          }
+
+          if (patchResult?._skipped) {
+            console.log(`    ⏭ PATCH pulado pela Pluggy: ${patchResult._message}`);
+          } else if (isItemUpdating(patchResult?.status)) {
+            console.log(`    ⏳ aguardando sync completar...`);
+            const ready = await waitForItemUpdate(item.pluggy_item_id, { timeoutMs: PATCH_MAX_WAIT_MS, intervalMs: PATCH_POLL_INTERVAL_MS });
+            if (ready) {
+              console.log(`    ✓ sync completou: ${ready.status}`);
+              await persistItemStatus(item.id, ready);
+            } else {
+              console.log(`    ⚠ timeout aguardando sync`);
+            }
+          } else if (patchResult) {
+            console.log(`    ✓ PATCH ok: ${patchResult.status}`);
+            await persistItemStatus(item.id, patchResult);
+          }
+
+          // Delay entre PATCHs para respeitar rate limit de 20/min
+          await new Promise(r => setTimeout(r, PATCH_DELAY_BETWEEN_ITEMS_MS));
+        }
+      } else {
+        console.log(`  ⏭ PATCH desabilitado (SYNC_SKIP_PATCH=1)`);
+      }
+
+      // ── Processar todos os itens em paralelo ────────────────────────────────
+      const results = await Promise.allSettled(
+        items.map(async item => {
+          const { rows: hasTx } = await pool.query(
+            `SELECT 1 FROM transactions WHERE pluggy_item_id = $1 LIMIT 1`,
+            [item.pluggy_item_id]
+          );
+          const from = hasTx.length ? sevenDaysAgo : FIRST_LOAD_FROM;
+          return processItem(client, item, from, to);
+        })
+      );
+
+      for (const r of results) {
+        if (r.status === 'fulfilled') {
+          const v = r.value;
+          if (v.status === 'ok')
+            console.log(`  ✓ ${client.name} / ${v.bank}: ${v.transactions} transações`);
+          else
+            console.log(`  ⤷ ${client.name} / ${v.bank}: ${v.status} (${v.reason})`);
+        } else {
+          console.error(`  ✗ ${client.name}: ${r.reason?.message}`);
+        }
+      }
+
+      await pool.query(`UPDATE clients SET last_sync = NOW() WHERE id = $1`, [client.id]);
+    }
+
+    console.log(`[sync] concluído ${new Date().toISOString()}`);
+  } finally {
+    await releaseSyncLock(lock.lockId);
+    await pool.end();
+  }
 }
 
-main().catch(err => {
+main().catch(async err => {
   console.error('[sync] erro fatal:', err.message);
+  // Tenta liberar lock em caso de erro inesperido
+  try {
+    await forceReleaseSyncLock('sync-standalone');
+  } catch {}
   process.exit(1);
 });

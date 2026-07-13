@@ -28,6 +28,7 @@ export default function ClientPage({ params }) {
   const [transactions, setTransactions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [diagnostics, setDiagnostics] = useState([]);
   const [connecting, setConnecting] = useState(false);
   const [removingId, setRemovingId] = useState(null);
@@ -119,6 +120,31 @@ export default function ClientPage({ params }) {
     setSyncing(false);
   };
 
+  const refreshConnections = async (itemId = null) => {
+    if (items.length === 0) return;
+    setRefreshing(true);
+    setError('');
+    try {
+      const url = itemId
+        ? `/api/clients/${id}/refresh?itemId=${itemId}`
+        : `/api/clients/${id}/refresh`;
+      const res = await fetch(url, { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+
+      const failures = data.results?.filter(r => !r.success) || [];
+      if (failures.length > 0) {
+        const msgs = failures.map(f => `${f.bank}: ${f.reason}`).join('; ');
+        setError(`Algumas conexões não foram atualizadas: ${msgs}`);
+      }
+      await fetchClient();
+      await fetchTransactions();
+    } catch (e) {
+      setError(e.message);
+    }
+    setRefreshing(false);
+  };
+
   const connectBank = async () => {
     if (!widgetReady) return setError('Widget ainda carregando, aguarde...');
     if (!client?.portalToken) return setError('Token do portal não disponível.');
@@ -174,6 +200,22 @@ export default function ClientPage({ params }) {
 
   const formatCurrency = (amount) =>
     new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(amount);
+
+  const getItemStatus = (item) => {
+    if (item.requiresReconnect || item.status === 'LOGIN_ERROR') {
+      return { label: 'Reconectar', color: 'bg-red-500', text: 'text-red-700', bg: 'bg-red-50', requiresAction: true };
+    }
+    if (item.status === 'OUTDATED' || item.status === 'ERROR') {
+      return { label: 'Erro', color: 'bg-orange-500', text: 'text-orange-700', bg: 'bg-orange-50', requiresAction: true };
+    }
+    if (item.status === 'UPDATED' || item.status === 'PARTIAL_SUCCESS') {
+      return { label: 'Atualizado', color: 'bg-green-500', text: 'text-green-700', bg: 'bg-green-50', requiresAction: false };
+    }
+    if (item.status === 'UPDATING') {
+      return { label: 'Sincronizando', color: 'bg-blue-400', text: 'text-blue-700', bg: 'bg-blue-50', requiresAction: false };
+    }
+    return { label: 'Pendente', color: 'bg-gray-400', text: 'text-gray-600', bg: 'bg-gray-50', requiresAction: false };
+  };
 
   const summary = transactions.reduce(
     (acc, tx) => {
@@ -292,25 +334,39 @@ export default function ClientPage({ params }) {
             </div>
           ) : (
             <div className="divide-y divide-gray-100">
-              {items.map((item) => (
-                <div key={item.id} className="flex items-center gap-3 px-5 py-3">
-                  {item.institutionLogo ? (
-                    <img src={item.institutionLogo} alt={item.institutionName} className="w-8 h-8 rounded-lg object-contain border border-gray-100 p-0.5" />
-                  ) : (
-                    <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center"><Building2 className="w-4 h-4 text-blue-600" /></div>
-                  )}
-                  <span className="flex-1 text-sm font-medium text-gray-900">
-                    {item.institutionName}
-                    {item.accountNumbers && (
-                      <span className="ml-2 text-xs font-normal text-gray-400">Conta: {item.accountNumbers}</span>
+              {items.map((item) => {
+                const s = getItemStatus(item);
+                return (
+                  <div key={item.id} className="flex items-center gap-3 px-5 py-3">
+                    {item.institutionLogo ? (
+                      <img src={item.institutionLogo} alt={item.institutionName} className="w-8 h-8 rounded-lg object-contain border border-gray-100 p-0.5" />
+                    ) : (
+                      <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center"><Building2 className="w-4 h-4 text-blue-600" /></div>
                     )}
-                  </span>
-                  <span className="w-1.5 h-1.5 rounded-full bg-green-500 inline-block"></span>
-                  <button onClick={() => removeBank(item.id, item.institutionName)} disabled={removingId === item.id} className="text-red-400 hover:text-red-600 p-1.5 rounded-lg hover:bg-red-50 transition-colors">
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                </div>
-              ))}
+                    <span className="flex-1 text-sm font-medium text-gray-900">
+                      {item.institutionName}
+                      {item.accountNumbers && (
+                        <span className="ml-2 text-xs font-normal text-gray-400">Conta: {item.accountNumbers}</span>
+                      )}
+                    </span>
+                    <span className={`flex items-center gap-1.5 px-2 py-1 rounded-full text-xs font-medium ${s.bg} ${s.text}`}>
+                      <span className={`w-1.5 h-1.5 rounded-full ${s.color}`}></span>
+                      {s.label}
+                    </span>
+                    <button
+                      onClick={() => refreshConnections(item.id)}
+                      disabled={refreshing}
+                      className="text-indigo-400 hover:text-indigo-600 hover:bg-indigo-50 p-1.5 rounded-lg transition-colors"
+                      title="Atualizar esta conexão"
+                    >
+                      <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
+                    </button>
+                    <button onClick={() => removeBank(item.id, item.institutionName)} disabled={removingId === item.id} className="text-red-400 hover:text-red-600 p-1.5 rounded-lg hover:bg-red-50 transition-colors">
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>
@@ -326,11 +382,14 @@ export default function ClientPage({ params }) {
                 <div className="divide-y divide-gray-100">
                   {diagnostics.map((d, i) => {
                     const ok = d.status === 'UPDATED' || d.status === 'PARTIAL_SUCCESS';
-                    const statusColor = ok ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700';
+                    const error = d.status === 'LOGIN_ERROR' || d.status === 'ERROR' || d.status === 'OUTDATED' || d.requiresReconnect;
+                    const statusColor = ok ? 'bg-green-100 text-green-700' : error ? 'bg-red-100 text-red-700' : 'bg-yellow-100 text-yellow-700';
                     return (
-                      <div key={i} className="flex items-center gap-3 px-5 py-3 text-sm">
-                        <span className="flex-1 font-medium text-gray-800">{d.bank}</span>
-                        <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${statusColor}`}>{d.status}</span>
+                      <div key={i} className="flex flex-col sm:flex-row sm:items-center gap-2 px-5 py-3 text-sm">
+                        <div className="flex items-center gap-3 flex-1">
+                          <span className="font-medium text-gray-800">{d.bank}</span>
+                          <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${statusColor}`}>{d.status}</span>
+                        </div>
                         {ok && d.accounts > 0 && (
                           <span className="text-gray-500 text-xs">
                             {d.transactions} transações · {d.accounts} conta(s)
@@ -349,10 +408,13 @@ export default function ClientPage({ params }) {
                             )}
                           </span>
                         )}
-                        {!ok && (
-                          <span className="text-yellow-600 text-xs">
-                            Aguardando sincronização da Pluggy
-                            {d.connectorProducts?.length > 0 && <> · produtos: {d.connectorProducts.join(', ')}</>}
+                        {error && (
+                          <span className="text-red-600 text-xs">
+                            {d.requiresReconnect
+                              ? 'Credenciais inválidas ou consentimento revogado. Clique em "Reconectar" no portal.'
+                              : d.status === 'OUTDATED'
+                                ? 'Dados desatualizados. A Pluggy tentará novamente automaticamente.'
+                                : `Erro: ${d.errorMessage || d.errorCode || 'falha na sincronização'}`}
                             {d.lastUpdatedAt && (
                               <> · último dado: {new Date(d.lastUpdatedAt).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}</>
                             )}
@@ -394,6 +456,14 @@ export default function ClientPage({ params }) {
                 >
                   <RefreshCw className={`w-4 h-4 ${syncing ? 'animate-spin' : ''}`} />
                   {syncing ? 'Buscando...' : 'Buscar Extrato'}
+                </button>
+                <button
+                  onClick={() => refreshConnections()}
+                  disabled={refreshing}
+                  className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700 disabled:opacity-50 transition-colors"
+                >
+                  <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
+                  {refreshing ? 'Atualizando...' : 'Atualizar Conexões'}
                 </button>
                 {transactions.length > 0 && (
                   <button
