@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getClients, createClient, generatePortalToken } from '@/lib/storage';
+import { getClients, createClient, generatePortalToken, getItemsByClientId } from '@/lib/storage';
 import { v4 as uuidv4 } from 'uuid';
 
 export const dynamic = 'force-dynamic';
@@ -7,7 +7,11 @@ export const dynamic = 'force-dynamic';
 export async function GET() {
   try {
     const clients = await getClients();
-    return NextResponse.json(clients);
+    const enriched = await Promise.all(clients.map(async (client) => {
+      const items = await getItemsByClientId(client.id);
+      return { ...client, items };
+    }));
+    return NextResponse.json(enriched);
   } catch (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }

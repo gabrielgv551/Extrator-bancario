@@ -9,6 +9,14 @@ export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
 
 export async function GET(request) {
+  const secret = process.env.CRON_SECRET;
+  const authHeader = request.headers.get('authorization');
+  const hasSecret = secret && authHeader === `Bearer ${secret}`;
+  const isVercelCron = request.headers.get('x-vercel-cron') === '1';
+  if (!hasSecret && !isVercelCron) {
+    return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
+  }
+
   const { searchParams } = new URL(request.url);
   const from = searchParams.get('from') || '2026-05-01';
   const to   = searchParams.get('to')   || new Date().toISOString().split('T')[0];

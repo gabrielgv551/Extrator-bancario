@@ -9,7 +9,8 @@ export async function POST(request) {
     if (!clientUserId) {
       return NextResponse.json({ error: 'clientUserId obrigatório' }, { status: 400 });
     }
-    const token = await getConnectToken(clientUserId);
+    const webhookUrl = process.env.PLUGGY_WEBHOOK_URL || null;
+    const token = await getConnectToken(clientUserId, { webhookUrl });
     return NextResponse.json({ token });
   } catch (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });

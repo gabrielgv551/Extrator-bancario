@@ -10,7 +10,10 @@ function sessionToken(password) {
 export async function POST(request) {
   try {
     const { password } = await request.json();
-    const adminPassword = process.env.ADMIN_PASSWORD || 'admin123';
+    const adminPassword = process.env.ADMIN_PASSWORD;
+    if (!adminPassword) {
+      return NextResponse.json({ error: 'Admin não configurado' }, { status: 500 });
+    }
 
     if (password !== adminPassword) {
       return NextResponse.json({ error: 'Senha incorreta' }, { status: 401 });

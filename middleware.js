@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 
-const PUBLIC = ['/login', '/portal', '/api/portal', '/api/admin/login', '/api/cron', '/api/clients', '/api/debug'];
+const PUBLIC = ['/login', '/portal', '/api/portal', '/api/admin/login', '/api/cron/sync', '/api/webhooks/pluggy', '/api/debug'];
 const SALT = 'pluggy-admin-2024';
 
 async function sessionToken(password) {
@@ -17,7 +17,11 @@ export async function middleware(request) {
   if (pathname.startsWith('/_next') || pathname === '/favicon.ico') return NextResponse.next();
 
   const session = request.cookies.get('admin_session')?.value;
-  const password = process.env.ADMIN_PASSWORD || 'admin123';
+  const password = process.env.ADMIN_PASSWORD;
+  if (!password) {
+    console.error('[middleware] ADMIN_PASSWORD não configurada');
+    return NextResponse.redirect(new URL('/login', request.url));
+  }
   const expected = await sessionToken(password);
 
   if (session !== expected) {

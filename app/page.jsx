@@ -17,6 +17,7 @@ import {
   Copy,
   Check,
   LogOut,
+  AlertCircle,
 } from 'lucide-react';
 
 export default function Dashboard() {
@@ -55,6 +56,15 @@ export default function Dashboard() {
   const stats = {
     total: clients.length,
     synced: clients.filter((c) => c.lastSync).length,
+    needsReconnect: clients.filter((c) => c.items?.some((i) => i.requiresReconnect || i.status === 'LOGIN_ERROR')).length,
+  };
+
+  const getClientStatus = (client) => {
+    const needs = client.items?.some((i) => i.requiresReconnect || i.status === 'LOGIN_ERROR');
+    if (needs) return { label: 'Reconectar', className: 'bg-red-100 text-red-700 border-red-200' };
+    const hasItems = client.items && client.items.length > 0;
+    if (!hasItems) return { label: 'Sem banco', className: 'bg-gray-100 text-gray-600 border-gray-200' };
+    return { label: 'OK', className: 'bg-green-100 text-green-700 border-green-200' };
   };
 
   const logout = async () => {
@@ -140,10 +150,11 @@ export default function Dashboard() {
         )}
 
         {/* Stats */}
-        <div className="grid grid-cols-2 gap-4 mb-8">
+        <div className="grid grid-cols-3 gap-4 mb-8">
           {[
             { label: 'Total de Clientes', value: stats.total, icon: Users, bg: 'bg-blue-100', fg: 'text-blue-600' },
             { label: 'Já Sincronizados', value: stats.synced, icon: RefreshCw, bg: 'bg-purple-100', fg: 'text-purple-600' },
+            { label: 'Precisam Reconectar', value: stats.needsReconnect, icon: AlertCircle, bg: 'bg-red-100', fg: 'text-red-600' },
           ].map(({ label, value, icon: Icon, bg, fg }) => (
             <div key={label} className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm">
               <div className={`w-10 h-10 ${bg} rounded-lg flex items-center justify-center mb-3`}>
@@ -173,6 +184,7 @@ export default function Dashboard() {
             <thead>
               <tr className="border-b border-gray-200 bg-gray-50 text-left">
                 <th className="px-5 py-3 font-semibold text-gray-600">Cliente</th>
+                <th className="px-5 py-3 font-semibold text-gray-600">Status</th>
                 <th className="px-5 py-3 font-semibold text-gray-600">Link do Portal</th>
                 <th className="px-5 py-3 font-semibold text-gray-600">Última Sync</th>
                 <th className="px-5 py-3 font-semibold text-gray-600 text-right">Ações</th>
@@ -181,23 +193,31 @@ export default function Dashboard() {
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={4} className="text-center py-12 text-gray-400">
+                  <td colSpan={5} className="text-center py-12 text-gray-400">
                     Carregando clientes...
                   </td>
                 </tr>
               ) : filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={4} className="text-center py-12 text-gray-400">
+                  <td colSpan={5} className="text-center py-12 text-gray-400">
                     {search ? 'Nenhum cliente encontrado' : 'Nenhum cliente cadastrado ainda. Clique em "Novo Cliente" para começar.'}
                   </td>
                 </tr>
               ) : (
-                filtered.map((client) => (
+                filtered.map((client) => {
+                  const status = getClientStatus(client);
+                  return (
                   <tr
                     key={client.id}
                     className="border-b border-gray-100 hover:bg-gray-50 transition-colors"
                   >
                     <td className="px-5 py-3.5 font-medium text-gray-900">{client.name}</td>
+                    <td className="px-5 py-3.5">
+                      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border ${status.className}`}>
+                        {stats.needsReconnect > 0 && (client.items?.some((i) => i.requiresReconnect || i.status === 'LOGIN_ERROR')) && <AlertCircle className="w-3 h-3" />}
+                        {status.label}
+                      </span>
+                    </td>
                     <td className="px-5 py-3.5">
                       <button
                         onClick={() => copyPortalLink(client)}
@@ -230,7 +250,8 @@ export default function Dashboard() {
                       </div>
                     </td>
                   </tr>
-                ))
+                  );
+                })
               )}
             </tbody>
           </table>
