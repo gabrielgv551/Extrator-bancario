@@ -219,8 +219,10 @@ export default function ClientPage({ params }) {
 
   const summary = transactions.reduce(
     (acc, tx) => {
-      if (tx.type === 'CREDIT') acc.entradas += tx.amount;
-      else acc.saidas += Math.abs(tx.amount);
+      const amount = Number(tx.amount);
+      if (Number.isNaN(amount)) return acc;
+      if (tx.type === 'CREDIT') acc.entradas += amount;
+      else acc.saidas += Math.abs(amount);
       return acc;
     },
     { entradas: 0, saidas: 0 }
