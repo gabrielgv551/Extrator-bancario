@@ -101,6 +101,23 @@ export default function ClientPage({ params }) {
     fetchClient();
   }, [fetchClient]);
 
+  const updateItemsFromDiagnostics = (diagnostics) => {
+    if (!diagnostics || diagnostics.length === 0) return;
+    setItems(prev => prev.map(item => {
+      const diag = diagnostics.find(d => d.bank === item.institutionName);
+      if (!diag) return item;
+      return {
+        ...item,
+        status: diag.status || item.status,
+        executionStatus: diag.executionStatus || item.executionStatus,
+        errorCode: diag.errorCode || item.errorCode,
+        errorMessage: diag.errorMessage || item.errorMessage,
+        lastUpdatedAt: diag.lastUpdatedAt || item.lastUpdatedAt,
+        requiresReconnect: diag.requiresReconnect ?? item.requiresReconnect,
+      };
+    }));
+  };
+
   const fetchTransactions = async () => {
     if (items.length === 0) return;
     setSyncing(true);
@@ -113,6 +130,7 @@ export default function ClientPage({ params }) {
       if (!res.ok) throw new Error(data.error);
       setTransactions(data.transactions);
       setDiagnostics(data.diagnostics ?? []);
+      updateItemsFromDiagnostics(data.diagnostics ?? []);
       fetchClient();
     } catch (e) {
       setError(e.message);
@@ -144,6 +162,7 @@ export default function ClientPage({ params }) {
     }
     setRefreshing(false);
   };
+
 
   const connectBank = async () => {
     if (!widgetReady) return setError('Widget ainda carregando, aguarde...');
