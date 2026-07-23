@@ -173,6 +173,8 @@ export default function PortalPage({ params }) {
       showMessage(e.message, 'error');
     }
   };
+
+  const handleReconnect = (item) => {
     const connector = connectors.find(c => c.institutionCode === item.institutionCode || c.name.toLowerCase() === (item.institutionName || '').toLowerCase());
     if (connector) {
       handleSelectConnector(connector);
