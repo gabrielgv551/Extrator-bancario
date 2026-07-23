@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import {
-  getClients, getItemsByClientId, updateClient,
+  getClients, getItemsByClientId, updateClient, updateItemStatus,
   acquireSyncLock, releaseSyncLock, refreshSyncLock,
 } from '@/lib/storage';
 import { requestBusinessInstitutionData } from '@/lib/klavi';
@@ -73,7 +73,11 @@ export async function GET(request) {
             linkId: item.klaviLinkId,
             consentIds: item.klaviConsentId ? [item.klaviConsentId] : undefined,
             products: DEFAULT_PRODUCTS,
+            productsCallbackUrl: process.env.KLAVI_WEBHOOK_URL || null,
           });
+
+          await updateItemStatus(item.id, { status: 'UPDATING' }).catch(() => {});
+
           results.push({
             client: client.name,
             bank: item.institutionName,

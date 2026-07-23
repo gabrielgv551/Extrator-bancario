@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
-import { getClientById, getItemsByClientId, updateClient } from '@/lib/storage';
-import { requestBusinessInstitutionData, getConsentList } from '@/lib/klavi';
+import { getClientById, getItemsByClientId, updateClient, updateItemStatus } from '@/lib/storage';
+import { requestBusinessInstitutionData } from '@/lib/klavi';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -53,7 +53,11 @@ export async function POST(request, { params }) {
           linkId: item.klaviLinkId,
           consentIds: item.klaviConsentId ? [item.klaviConsentId] : undefined,
           products: DEFAULT_PRODUCTS,
+          productsCallbackUrl: process.env.KLAVI_WEBHOOK_URL || null,
         });
+
+        await updateItemStatus(item.id, { status: 'UPDATING' });
+
         results.push({
           itemId: item.id,
           bank: item.institutionName,
