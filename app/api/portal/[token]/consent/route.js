@@ -99,14 +99,15 @@ export async function POST(request, { params }) {
     async function freeConsentSlot({ personalTaxId, businessTaxId, institutionCode }) {
       // O Open Finance Brasil limita consentimentos ativos por CPF/CNPJ por instituição.
       // Quando o limite é atingido, removemos consentimentos deletáveis e, se necessário,
-      // revogamos o consentimento autorizado mais antigo da mesma instituição para liberar vaga.
+      // revogamos os consentimentos autorizados da mesma instituição (do mais antigo para o mais novo)
+      // para liberar vaga. Se a API da Klavi não permitir revogar, informamos o usuário.
       let allConsents = [];
       try {
         const listData = await getConsentList({ personalTaxId, businessTaxId });
         allConsents = Array.isArray(listData) ? listData : (listData?.consents || []);
       } catch (err) {
         console.warn('[portal consent] falha ao listar consentimentos para limpeza:', err.message);
-        return { deleted: 0, authorisedDeleted: 0 };
+        return { deleted: 0, authorisedDeleted: 0, blockedConsents: [] };
       }
 
       const sameInstitution = allConsents.filter(c => c.institutionCode === institutionCode);
@@ -127,28 +128,36 @@ export async function POST(request, { params }) {
           await deleteConsent(c.consentId || c.consentid);
           deleted++;
         } catch (err) {
-          console.warn('[portal consent] falha ao deletar consentimento=%s:', c.consentId || c.consentid, err.message);
+          console.warn('[portal consent] falha ao deletar consentimento=%s status=%s:', c.consentId || c.consentid, c.status, err.message);
         }
       }
 
-      // 2) Se ainda não liberou vaga, revoga o consentimento autorizado mais antigo da mesma instituição.
+      // 2) Se ainda não liberou vaga, revoga TODOS os consentimentos autorizados da mesma instituição,
+      //    do mais antigo ao mais novo, até que a API permita deletar.
       let authorisedDeleted = 0;
+      let blockedConsents = [];
       const authorisedStatuses = ['authorised', 'authorized'];
       const authorised = sameInstitution
-        .filter(c => authorisedStatuses.includes(String(c.status).toLowerCase()) && !deletable.find(d => (d.consentId || d.consentid) === (c.consentId || c.consentid)))
+        .filter(c => authorisedStatuses.includes(String(c.status).toLowerCase()))
         .sort(sortByDate);
-      if (authorised.length > 0) {
-        const oldest = authorised[0];
+      for (const c of authorised) {
         try {
-          await deleteConsent(oldest.consentId || oldest.consentid);
+          await deleteConsent(c.consentId || c.consentid);
           authorisedDeleted++;
         } catch (err) {
-          console.warn('[portal consent] falha ao revogar consentimento autorizado=%s:', oldest.consentId || oldest.consentid, err.message);
+          console.warn('[portal consent] falha ao revogar consentimento autorizado=%s status=%s:', c.consentId || c.consentid, c.status, err.message);
+          blockedConsents.push({
+            consentId: c.consentId || c.consentid,
+            institutionCode: c.institutionCode,
+            institutionName: c.institutionName || c.institutionname || null,
+            status: c.status,
+            createdAt: c.createdAt || c.createdat || null,
+          });
         }
       }
 
-      console.log('[portal consent] limpeza: deletaveis=%d autorizados_revogados=%d', deleted, authorisedDeleted);
-      return { deleted, authorisedDeleted };
+      console.log('[portal consent] limpeza: deletaveis=%d autorizados_revogados=%d bloqueados=%d', deleted, authorisedDeleted, blockedConsents.length);
+      return { deleted, authorisedDeleted, blockedConsents };
     }
 
     try {
@@ -158,7 +167,16 @@ export async function POST(request, { params }) {
       if (!isLimitError(error)) throw error;
 
       console.warn('[portal consent] limite de consentimentos atingido (code=%s), limpando antigos...', error.code);
-      const { deleted, authorisedDeleted } = await freeConsentSlot({ personalTaxId, businessTaxId, institutionCode });
+      const { deleted, authorisedDeleted, blockedConsents } = await freeConsentSlot({ personalTaxId, businessTaxId, institutionCode });
+
+      if (deleted === 0 && authorisedDeleted === 0 && blockedConsents.length > 0) {
+        const banks = [...new Set(blockedConsents.map(c => c.institutionName).filter(Boolean))].join(', ');
+        return NextResponse.json({
+          error: `Limite de consentimentos atingido no banco. A API não conseguiu revogar ${blockedConsents.length} consentimento(s) autorizado(s)${banks ? ` em: ${banks}` : ''}. Acesse o internet banking do banco e cancele o compartilhamento Open Finance antigo para continuar.`,
+          code: 'CONSENT_LIMIT_EXCEEDED',
+          blockedConsents,
+        }, { status: 422 });
+      }
 
       if (deleted === 0 && authorisedDeleted === 0) {
         return NextResponse.json({
