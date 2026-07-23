@@ -21,28 +21,43 @@ export async function POST(request) {
   try {
     const body = await request.json().catch(() => ({}));
     const { itemId } = body;
+    console.log('[debug klavi-request-data] itemId recebido:', itemId, 'tipo:', typeof itemId);
     if (!itemId) return NextResponse.json({ error: 'Informe itemId' }, { status: 400 });
 
-    const item = await getItemById(itemId);
+    let item;
+    try {
+      item = await getItemById(itemId);
+    } catch (dbErr) {
+      console.error('[debug klavi-request-data] erro ao buscar item:', dbErr);
+      return NextResponse.json({ error: 'Erro ao buscar item no banco', detail: dbErr.message }, { status: 500 });
+    }
     if (!item) return NextResponse.json({ error: 'Item não encontrado' }, { status: 404 });
 
-    const result = await requestBusinessInstitutionData({
-      businessTaxId: item.businessTaxId,
-      institutionCode: item.institutionCode,
-      linkId: item.klaviLinkId,
-      consentIds: item.klaviConsentId ? [item.klaviConsentId] : undefined,
-      products: body.products || DEFAULT_PRODUCTS,
-      productsCallbackUrl: process.env.KLAVI_WEBHOOK_URL || null,
-    });
+    console.log('[debug klavi-request-data] item encontrado:', item.id, item.institutionName, item.businessTaxId, item.klaviLinkId);
+
+    let result;
+    try {
+      result = await requestBusinessInstitutionData({
+        businessTaxId: item.businessTaxId,
+        institutionCode: item.institutionCode,
+        linkId: item.klaviLinkId,
+        consentIds: item.klaviConsentId ? [item.klaviConsentId] : undefined,
+        products: body.products || DEFAULT_PRODUCTS,
+        productsCallbackUrl: process.env.KLAVI_WEBHOOK_URL || null,
+      });
+    } catch (klaviErr) {
+      console.error('[debug klavi-request-data] erro na Klavi:', klaviErr);
+      return NextResponse.json({
+        success: false,
+        error: klaviErr.message,
+        code: klaviErr.code,
+        body: klaviErr.body,
+      }, { status: 502 });
+    }
 
     return NextResponse.json({ success: true, itemId: item.id, klaviResponse: result });
   } catch (err) {
-    console.error('[debug klavi-request-data] erro:', err);
-    return NextResponse.json({
-      success: false,
-      error: err.message,
-      code: err.code,
-      body: err.body,
-    }, { status: 502 });
+    console.error('[debug klavi-request-data] erro geral:', err);
+    return NextResponse.json({ success: false, error: err.message, stack: err.stack }, { status: 500 });
   }
 }
