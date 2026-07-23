@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, use } from 'react';
-import { Plus, Trash2, Building2, Wifi, AlertCircle, CheckCircle, Loader2, ExternalLink } from 'lucide-react';
+import { Plus, Trash2, Building2, Wifi, AlertCircle, CheckCircle, Loader2, ExternalLink, RefreshCw } from 'lucide-react';
 
 export default function PortalPage({ params }) {
   const { token } = use(params);
@@ -162,7 +162,17 @@ export default function PortalPage({ params }) {
     }
   };
 
-  const handleReconnect = (item) => {
+  const handleRequestData = async (item) => {
+    setMessage(null);
+    try {
+      const res = await fetch(`/api/portal/${token}/items/${item.id}/request-data`, { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      showMessage(data.message || 'Solicitação enviada ao banco.', 'success');
+    } catch (e) {
+      showMessage(e.message, 'error');
+    }
+  };
     const connector = connectors.find(c => c.institutionCode === item.institutionCode || c.name.toLowerCase() === (item.institutionName || '').toLowerCase());
     if (connector) {
       handleSelectConnector(connector);
@@ -276,6 +286,15 @@ export default function PortalPage({ params }) {
                     {(connecting && selectedConnector?.institutionCode === item.institutionCode) || removingId === item.id ? (
                       <Loader2 className="w-4 h-4 animate-spin text-gray-400" />
                     ) : null}
+                    {(item.status === 'WAITING_DATA' || item.status === 'UPDATING') && (
+                      <button
+                        onClick={() => handleRequestData(item)}
+                        className="text-gray-400 hover:text-blue-600 hover:bg-blue-50 p-2 rounded-lg transition-colors"
+                        title="Solicitar dados do banco novamente"
+                      >
+                        <RefreshCw className="w-4 h-4" />
+                      </button>
+                    )}
                     <button
                       onClick={() => handleReconnect(item)}
                       disabled={connecting}

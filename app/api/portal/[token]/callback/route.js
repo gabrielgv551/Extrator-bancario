@@ -65,16 +65,26 @@ export async function GET(request, { params }) {
     // fazemos a solicitação explícita aqui para garantir.
     const businessTaxId = item.businessTaxId || client.businessTaxId;
     if (businessTaxId && item.institutionCode) {
-      await requestBusinessInstitutionData({
-        businessTaxId,
-        institutionCode: item.institutionCode,
-        linkId,
-        consentIds: consentId ? [consentId] : [],
-        products: DEFAULT_PRODUCTS,
-      }).catch(err => console.warn('[portal callback] falha ao solicitar relatório:', err.message));
+      try {
+        await requestBusinessInstitutionData({
+          businessTaxId,
+          institutionCode: item.institutionCode,
+          linkId,
+          consentIds: consentId ? [consentId] : [],
+          products: DEFAULT_PRODUCTS,
+          productsCallbackUrl: process.env.KLAVI_WEBHOOK_URL || null,
+        });
+      } catch (err) {
+        console.error('[portal callback] falha ao solicitar relatório:', err);
+        return NextResponse.json({
+          success: false,
+          error: 'Falha ao solicitar dados do banco',
+          errorDescription: err.message,
+        }, { status: 502 });
+      }
     }
 
-    await updateItemStatus(item.id, { status: 'WAITING_DATA', klaviConsentId: consentId || item.klaviConsentId });
+    await updateItemStatus(item.id, { status: 'UPDATING', klaviConsentId: consentId || item.klaviConsentId });
 
     return NextResponse.json({
       success: true,
