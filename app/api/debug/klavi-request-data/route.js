@@ -44,6 +44,7 @@ export async function POST(request) {
         consentIds: item.klaviConsentId ? [item.klaviConsentId] : undefined,
         products: body.products || DEFAULT_PRODUCTS,
         productsCallbackUrl: process.env.KLAVI_WEBHOOK_URL || null,
+        externalInfo: body.transactionPeriod ? { transactionPeriod: body.transactionPeriod } : undefined,
       });
     } catch (klaviErr) {
       console.error('[debug klavi-request-data] erro na Klavi:', klaviErr);
