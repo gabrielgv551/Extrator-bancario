@@ -3,8 +3,11 @@ import { getClientById, getItemsByClientId, getWebhookEventsForItem } from '@/li
 
 export const dynamic = 'force-dynamic';
 
-export async function GET(request, { params }) {
-  const { id } = await params;
+export async function GET(request) {
+  const { searchParams } = new URL(request.url);
+  const id = searchParams.get('id');
+  if (!id) return NextResponse.json({ error: 'Informe o id do cliente' }, { status: 400 });
+
   const client = await getClientById(id);
   if (!client) return NextResponse.json({ error: 'Cliente não encontrado' }, { status: 404 });
 
