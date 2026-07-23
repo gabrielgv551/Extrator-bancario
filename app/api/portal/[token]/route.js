@@ -9,5 +9,5 @@ export async function GET(_, { params }) {
   if (!client) return NextResponse.json({ error: 'Portal não encontrado' }, { status: 404 });
 
   const items = await getItemsByClientId(client.id);
-  return NextResponse.json({ client: { id: client.id, name: client.name }, items });
+  return NextResponse.json({ client: { id: client.id, name: client.name, businessTaxId: client.businessTaxId }, items });
 }

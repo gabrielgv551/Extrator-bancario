@@ -44,19 +44,6 @@ export default function ClientPage({ params }) {
   const [fromDate, setFromDate] = useState('2026-01-01');
   const [toDate, setToDate] = useState(today);
 
-  useEffect(() => {
-    if (document.querySelector('[data-pluggy-widget]')) {
-      setWidgetReady(true);
-      return;
-    }
-    const script = document.createElement('script');
-    script.src = 'https://cdn.pluggy.ai/pluggy-connect/v2.1.0/pluggy-connect.js';
-    script.setAttribute('data-pluggy-widget', 'true');
-    script.onload = () => setWidgetReady(true);
-    script.onerror = () => setError('Falha ao carregar o widget da Pluggy. Verifique sua conexão.');
-    document.head.appendChild(script);
-  }, []);
-
   const fetchClient = useCallback(async () => {
     const clientRes = await fetch(`/api/clients/${id}`);
     if (clientRes.ok) {
@@ -165,34 +152,10 @@ export default function ClientPage({ params }) {
 
 
   const connectBank = async () => {
-    if (!widgetReady) return setError('Widget ainda carregando, aguarde...');
     if (!client?.portalToken) return setError('Token do portal não disponível.');
     setConnecting(true);
-    setError('');
-    try {
-      const res = await fetch(`/api/portal/${client.portalToken}/connect-token`, { method: 'POST' });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
-
-      const pluggyConnect = new window.PluggyConnect({
-        connectToken: data.token,
-        onSuccess: async (itemData) => {
-          await fetch(`/api/portal/${client.portalToken}/items`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ pluggyItemId: itemData.item.id }),
-          });
-          await fetchClient();
-          setConnecting(false);
-        },
-        onError: (err) => { setError(`Erro: ${JSON.stringify(err)}`); setConnecting(false); },
-        onClose: () => setConnecting(false),
-      });
-      pluggyConnect.init();
-    } catch (e) {
-      setError(e.message);
-      setConnecting(false);
-    }
+    window.open(`/portal/${client.portalToken}`, '_blank');
+    setConnecting(false);
   };
 
   const removeBank = async (itemId, name) => {
@@ -229,6 +192,9 @@ export default function ClientPage({ params }) {
     }
     if (item.status === 'UPDATED' || item.status === 'PARTIAL_SUCCESS') {
       return { label: 'Atualizado', color: 'bg-green-500', text: 'text-green-700', bg: 'bg-green-50', requiresAction: false };
+    }
+    if (item.status === 'WAITING_DATA') {
+      return { label: 'Aguardando dados', color: 'bg-yellow-400', text: 'text-yellow-700', bg: 'bg-yellow-50', requiresAction: false };
     }
     if (item.status === 'UPDATING') {
       return { label: 'Sincronizando', color: 'bg-blue-400', text: 'text-blue-700', bg: 'bg-blue-50', requiresAction: false };

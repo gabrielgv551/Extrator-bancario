@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getClientById, getItemsByClientId, getTransactionsByClientId, updateClient } from '@/lib/storage';
-import { getItem } from '@/lib/pluggy';
-import { buildItemStatusUpdates, isItemHealthy, requiresReconnectFromError } from '@/lib/status';
+import { isItemHealthy } from '@/lib/status';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -18,40 +17,17 @@ export async function GET(request, { params }) {
     if (!client) return NextResponse.json({ error: 'Cliente não encontrado' }, { status: 404 });
 
     const items = await getItemsByClientId(id);
-    const diagnostics = [];
-
-    for (const item of items) {
-      let pluggyItem = null;
-      let status = item.status || 'UNKNOWN';
-      let executionStatus = item.executionStatus || null;
-      let errorCode = item.errorCode || null;
-      let errorMessage = item.errorMessage || null;
-      let lastUpdatedAt = item.lastUpdatedAt || null;
-
-      try {
-        pluggyItem = await getItem(item.pluggyItemId);
-        const updates = buildItemStatusUpdates(pluggyItem);
-        status = updates.status;
-        executionStatus = updates.executionStatus;
-        errorCode = updates.errorCode;
-        errorMessage = updates.errorMessage;
-        lastUpdatedAt = updates.lastUpdatedAt;
-      } catch (err) {
-        console.warn('[tx] falha ao buscar status do item na Pluggy:', err.message);
-      }
-
-      const requiresReconnect = requiresReconnectFromError(errorCode) || status === 'LOGIN_ERROR';
-      diagnostics.push({
-        bank: item.institutionName,
-        status,
-        executionStatus,
-        errorCode,
-        errorMessage,
-        lastUpdatedAt,
-        requiresReconnect,
-        isHealthy: isItemHealthy(status),
-      });
-    }
+    const diagnostics = items.map(item => ({
+      bank: item.institutionName,
+      status: item.status || 'PENDING',
+      executionStatus: item.executionStatus || null,
+      errorCode: item.errorCode || null,
+      errorMessage: item.errorMessage || null,
+      lastUpdatedAt: item.lastUpdatedAt || null,
+      requiresReconnect: item.requiresReconnect || item.status === 'LOGIN_ERROR',
+      isHealthy: isItemHealthy(item.status),
+      provider: item.provider || 'pluggy',
+    }));
 
     const transactions = await getTransactionsByClientId(id, { from, to });
     transactions.sort((a, b) => new Date(b.date) - new Date(a.date));

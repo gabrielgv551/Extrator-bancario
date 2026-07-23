@@ -14,7 +14,10 @@ export async function DELETE(_, { params }) {
   if (!item) return NextResponse.json({ error: 'Conta não encontrada' }, { status: 404 });
 
   try {
-    await deletePluggyItem(item.pluggyItemId).catch(() => {});
+    // Se for item Pluggy legado, tenta deletar na Pluggy também.
+    if (item.provider === 'pluggy' && item.pluggyItemId) {
+      await deletePluggyItem(item.pluggyItemId).catch(() => {});
+    }
     await removeItem(itemId);
     return NextResponse.json({ success: true });
   } catch (error) {

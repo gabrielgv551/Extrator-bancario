@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getClientByToken, getItemsByClientId, addItem } from '@/lib/storage';
+import { getClientByToken, getItemsByClientId, addItem, addKlaviItem } from '@/lib/storage';
 import { getItem, getAccounts } from '@/lib/pluggy';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -20,8 +20,28 @@ export async function POST(request, { params }) {
   if (!client) return NextResponse.json({ error: 'Portal não encontrado' }, { status: 404 });
 
   try {
-    const { pluggyItemId } = await request.json();
-    if (!pluggyItemId) return NextResponse.json({ error: 'pluggyItemId obrigatório' }, { status: 400 });
+    const body = await request.json().catch(() => ({}));
+
+    // Fluxo Klavi
+    if (body.klaviLinkId || body.klaviConsentId) {
+      const item = await addKlaviItem({
+        id: uuidv4(),
+        clientId: client.id,
+        klaviLinkId: body.klaviLinkId || null,
+        klaviConsentId: body.klaviConsentId || null,
+        institutionCode: body.institutionCode || null,
+        institutionName: body.institutionName || 'Banco conectado',
+        institutionLogo: body.institutionLogo || null,
+        accountNumbers: body.accountNumbers || null,
+        businessTaxId: body.businessTaxId || null,
+        status: body.status || 'WAITING_DATA',
+      });
+      return NextResponse.json(item, { status: 201 });
+    }
+
+    // Fluxo Pluggy legado
+    const { pluggyItemId } = body;
+    if (!pluggyItemId) return NextResponse.json({ error: 'pluggyItemId ou klaviLinkId obrigatório' }, { status: 400 });
 
     const pluggyItem = await getItem(pluggyItemId).catch(() => null);
     const institutionName = pluggyItem?.connector?.name ?? 'Banco desconhecido';

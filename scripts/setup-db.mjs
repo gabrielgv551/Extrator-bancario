@@ -11,7 +11,7 @@ function parseDatabaseUrl(url) {
       port: parseInt(u.port || '5432', 10),
       user: u.username,
       password: decodeURIComponent(u.password),
-      database: u.pathname.replace(/^\//, ''),
+      database: decodeURIComponent(u.pathname.replace(/^\//, '')),
     };
   } catch {
     return null;
@@ -24,6 +24,8 @@ if (!parsed) {
   process.exit(1);
 }
 
+const DATABASE_NAME = parsed.database;
+
 const CONFIG = {
   host: parsed.host,
   port: parsed.port,
@@ -34,24 +36,25 @@ const CONFIG = {
 async function setup() {
   console.log('🔌 Conectando ao PostgreSQL...');
 
-  // Passo 1: criar o banco "extratos" se não existir
+  // Passo 1: criar o banco de destino se não existir
   const admin = new Client({ ...CONFIG, database: 'postgres' });
   await admin.connect();
 
   const { rows } = await admin.query(
-    "SELECT 1 FROM pg_database WHERE datname = 'extratos'"
+    'SELECT 1 FROM pg_database WHERE datname = $1',
+    [DATABASE_NAME]
   );
 
   if (rows.length === 0) {
-    await admin.query('CREATE DATABASE extratos');
-    console.log('✅ Banco de dados "extratos" criado!');
+    await admin.query(`CREATE DATABASE "${DATABASE_NAME.replace(/"/g, '""')}"`);
+    console.log(`✅ Banco de dados "${DATABASE_NAME}" criado!`);
   } else {
-    console.log('ℹ️  Banco "extratos" já existe.');
+    console.log(`ℹ️  Banco "${DATABASE_NAME}" já existe.`);
   }
   await admin.end();
 
-  // Passo 2: criar tabela clients dentro de "extratos"
-  const db = new Client({ ...CONFIG, database: 'extratos' });
+  // Passo 2: criar tabelas dentro do banco de destino
+  const db = new Client({ ...CONFIG, database: DATABASE_NAME });
   await db.connect();
 
   await db.query(`
@@ -64,6 +67,9 @@ async function setup() {
     )
   `);
 
+  await db.query(`ALTER TABLE clients ADD COLUMN IF NOT EXISTS business_tax_id VARCHAR(14)`);
+  await db.query(`ALTER TABLE clients ADD COLUMN IF NOT EXISTS gestor_empresa VARCHAR(255)`);
+
   await db.query(`ALTER TABLE clients ADD COLUMN IF NOT EXISTS portal_token VARCHAR(64) UNIQUE`);
   await db.query(`ALTER TABLE clients DROP COLUMN IF EXISTS item_id`);
 
@@ -71,12 +77,14 @@ async function setup() {
     CREATE TABLE IF NOT EXISTS items (
       id               UUID PRIMARY KEY,
       client_id        UUID NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
-      pluggy_item_id   VARCHAR(255) NOT NULL,
+      pluggy_item_id   VARCHAR(255),
       institution_name VARCHAR(255),
       institution_logo TEXT,
       created_at       TIMESTAMPTZ DEFAULT NOW()
     )
   `);
+
+  await db.query(`ALTER TABLE items ALTER COLUMN pluggy_item_id DROP NOT NULL`);
 
   await db.query(`
     CREATE TABLE IF NOT EXISTS transactions (
@@ -188,6 +196,17 @@ async function setup() {
   await db.query(`ALTER TABLE items ADD COLUMN IF NOT EXISTS notification_sent_at TIMESTAMPTZ`);
   await db.query(`ALTER TABLE items ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW()`);
 
+  // Campos para suporte ao provedor Klavi (migração Pluggy → Klavi)
+  await db.query(`ALTER TABLE items ADD COLUMN IF NOT EXISTS provider VARCHAR(20) DEFAULT 'pluggy'`);
+  await db.query(`ALTER TABLE items ADD COLUMN IF NOT EXISTS klavi_link_id VARCHAR(255)`);
+  await db.query(`ALTER TABLE items ADD COLUMN IF NOT EXISTS klavi_consent_id VARCHAR(255)`);
+  await db.query(`ALTER TABLE items ADD COLUMN IF NOT EXISTS business_tax_id VARCHAR(14)`);
+  await db.query(`ALTER TABLE items ADD COLUMN IF NOT EXISTS institution_code VARCHAR(10)`);
+
+  await db.query(`CREATE INDEX IF NOT EXISTS idx_items_provider ON items(provider)`);
+  await db.query(`CREATE INDEX IF NOT EXISTS idx_items_klavi_link ON items(klavi_link_id)`);
+  await db.query(`CREATE INDEX IF NOT EXISTS idx_items_klavi_consent ON items(klavi_consent_id)`);
+
   await db.query(`
     CREATE TABLE IF NOT EXISTS sync_logs (
       id                 UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -259,9 +278,10 @@ async function setup() {
   await db.query(`CREATE INDEX IF NOT EXISTS idx_items_deleted_at ON items(deleted_at)`);
   await db.query(`CREATE INDEX IF NOT EXISTS idx_items_status_error ON items(status, consecutive_errors) WHERE deleted_at IS NULL`);
 
-  console.log('✅ Tabelas "clients", "items" e "transactions" criadas/atualizadas!');
-  console.log('\n📋 Adicione ao seu .env.local e ao Vercel:');
-  console.log('DATABASE_URL=postgresql://postgres:****@37.60.236.200:5432/extratos');
+  console.log('✅ Tabelas criadas/atualizadas no banco "' + DATABASE_NAME + '"!');
+  console.log('\n📋 DATABASE_URL atual:');
+  console.log(process.env.DATABASE_URL);
+  console.log('\n📋 Adicione ao Vercel:');
   console.log('ADMIN_PASSWORD=sua_senha_admin\n');
 
   await db.end();

@@ -19,11 +19,15 @@ export async function GET() {
 
 export async function POST(request) {
   try {
-    const { name } = await request.json();
+    const { name, businessTaxId } = await request.json();
     if (!name?.trim()) {
       return NextResponse.json({ error: 'Nome obrigatório' }, { status: 400 });
     }
-    const client = await createClient({ id: uuidv4(), name: name.trim(), portalToken: generatePortalToken() });
+    const rawCnpj = businessTaxId ? businessTaxId.replace(/\D/g, '') : '';
+    if (rawCnpj && rawCnpj.length !== 14) {
+      return NextResponse.json({ error: 'CNPJ inválido' }, { status: 400 });
+    }
+    const client = await createClient({ id: uuidv4(), name: name.trim(), portalToken: generatePortalToken(), businessTaxId: rawCnpj || null });
     return NextResponse.json(client, { status: 201 });
   } catch (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });

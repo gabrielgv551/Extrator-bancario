@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 
-const PUBLIC = ['/login', '/portal', '/api/portal', '/api/admin/login', '/api/cron/sync', '/api/webhooks/pluggy', '/api/debug'];
+const PUBLIC = ['/login', '/portal', '/api/portal', '/api/admin/login', '/api/cron/sync', '/api/webhooks/pluggy', '/api/webhooks/klavi', '/api/debug'];
 const SALT = 'pluggy-admin-2024';
 
 async function sessionToken(password) {

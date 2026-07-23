@@ -1,0 +1,307 @@
+
+=== CONTA: Sicoob ===
+
+Total transações: 27
+
+-------------------------------------------
+ID: 72514aa7-1451-406d-a68f-f49d8ece45bb
+Data: 2026-06-09T03:00:00.000Z
+Descrição: TRANSF.REALIZADA PIX SICOOB
+Tipo: DEBIT
+Valor: -550
+Status: POSTED
+Categoria: Transfer - PIX
+Payment Data: {"payer":{"accountNumber":null,"branchNumber":null,"documentNumber":{"type":"CNPJ","value":"10.480.352/0001-45"},"name":null,"routingNumber":null,"routingNumberISPB":null},"paymentMethod":"PIX","reason":null,"receiver":null,"receiverReferenceId":null,"referenceNumber":null,"boletoMetadata":null}
+Operation Type: OUTROS
+
+-------------------------------------------
+ID: b6c64966-9061-4490-863e-948c852e8ee6
+Data: 2026-06-09T03:00:00.000Z
+Descrição: TRANSF.RECEBIDA - PIX SICOOB
+Tipo: CREDIT
+Valor: 77.6
+Status: POSTED
+Categoria: Transfer - PIX
+Payment Data: {"payer":null,"paymentMethod":"PIX","reason":null,"receiver":{"accountNumber":null,"branchNumber":null,"documentNumber":{"type":"CNPJ","value":"10.480.352/0001-45"},"name":null,"routingNumber":null,"routingNumberISPB":null},"receiverReferenceId":null,"referenceNumber":null,"boletoMetadata":null}
+Operation Type: PIX
+
+-------------------------------------------
+ID: 5e76bc58-aad8-4f91-9a60-b51f4c7111ea
+Data: 2026-06-09T03:00:00.000Z
+Descrição: TRANSF.RECEBIDA - PIX SICOOB
+Tipo: CREDIT
+Valor: 550
+Status: POSTED
+Categoria: Transfer - PIX
+Payment Data: {"payer":null,"paymentMethod":"PIX","reason":null,"receiver":{"accountNumber":null,"branchNumber":null,"documentNumber":{"type":"CNPJ","value":"10.480.352/0001-45"},"name":null,"routingNumber":null,"routingNumberISPB":null},"receiverReferenceId":null,"referenceNumber":null,"boletoMetadata":null}
+Operation Type: PIX
+
+-------------------------------------------
+ID: 2a902581-a954-4c3b-b14e-efa5c00d38f0
+Data: 2026-06-09T03:00:00.000Z
+Descrição: PIX RECEBIDO - OUTRA IF - Recebimento Pix|@RICARDO MARANDOLA|@***.675.019-**|@
+Tipo: CREDIT
+Valor: 98.45
+Status: POSTED
+Categoria: Non-recurring income
+Payment Data: {"payer":{"accountNumber":"1288000000814377000-0","branchNumber":"1553","documentNumber":{"type":"CPF","value":"048.675.019-13"},"name":null,"routingNumber":null,"routingNumberISPB":null},"paymentMethod":"PIX","reason":null,"receiver":{"accountNumber":null,"branchNumber":null,"documentNumber":{"type":"CNPJ","value":"10.480.352/0001-45"},"name":null,"routingNumber":null,"routingNumberISPB":null},"receiverReferenceId":null,"referenceNumber":null,"boletoMetadata":null}
+Operation Type: PIX
+
+-------------------------------------------
+ID: 06f9d86b-0d1e-42f3-bbbb-cb2c8b4f4f69
+Data: 2026-06-09T03:00:00.000Z
+Descrição: DÉB.TARIFA TD
+Tipo: DEBIT
+Valor: -35
+Status: POSTED
+Categoria: Tax on financial operations
+Payment Data: {"payer":{"accountNumber":null,"branchNumber":null,"documentNumber":{"type":"CNPJ","value":"10.480.352/0001-45"},"name":null,"routingNumber":null,"routingNumberISPB":null},"paymentMethod":"OTHER","reason":null,"receiver":null,"receiverReferenceId":null,"referenceNumber":null,"boletoMetadata":null}
+Operation Type: OUTROS
+
+-------------------------------------------
+ID: b1c4dca9-6087-4254-9a81-1544c959f52b
+Data: 2026-06-09T03:00:00.000Z
+Descrição: DÉB.IOF TD
+Tipo: DEBIT
+Valor: -13.64
+Status: POSTED
+Categoria: Tax on financial operations
+Payment Data: {"payer":{"accountNumber":null,"branchNumber":null,"documentNumber":{"type":"CNPJ","value":"10.480.352/0001-45"},"name":null,"routingNumber":null,"routingNumberISPB":null},"paymentMethod":"OTHER","reason":null,"receiver":null,"receiverReferenceId":null,"referenceNumber":null,"boletoMetadata":null}
+Operation Type: OUTROS
+
+-------------------------------------------
+ID: fa4fba39-4166-4355-888e-29d4e418538f
+Data: 2026-06-09T03:00:00.000Z
+Descrição: DÉB.JUROS CONTRATUAIS TD
+Tipo: DEBIT
+Valor: -45.07
+Status: POSTED
+Categoria: Interests charged
+Payment Data: {"payer":{"accountNumber":null,"branchNumber":null,"documentNumber":{"type":"CNPJ","value":"10.480.352/0001-45"},"name":null,"routingNumber":null,"routingNumberISPB":null},"paymentMethod":"OTHER","reason":null,"receiver":null,"receiverReferenceId":null,"referenceNumber":null,"boletoMetadata":null}
+Operation Type: OUTROS
+
+-------------------------------------------
+ID: 988b3ca8-0dd3-48a4-a747-c5fc2f0ce40a
+Data: 2026-06-09T03:00:00.000Z
+Descrição: CRÉD.LIBERAÇÃO TD
+Tipo: CREDIT
+Valor: 2280
+Status: POSTED
+Categoria: Transfers
+Payment Data: {"payer":null,"paymentMethod":"OTHER","reason":null,"receiver":{"accountNumber":null,"branchNumber":null,"documentNumber":{"type":"CNPJ","value":"10.480.352/0001-45"},"name":null,"routingNumber":null,"routingNumberISPB":null},"receiverReferenceId":null,"referenceNumber":null,"boletoMetadata":null}
+Operation Type: OUTROS
+
+-------------------------------------------
+ID: a07b3bd0-6fff-4ee1-8568-bacc2fca9105
+Data: 2026-06-09T03:00:00.000Z
+Descrição: DÉB.TIT.COMPE EFETIVADO
+Tipo: DEBIT
+Valor: -2893.76
+Status: POSTED
+Categoria: Services
+Payment Data: {"payer":{"accountNumber":null,"branchNumber":null,"documentNumber":{"type":"CNPJ","value":"10.480.352/0001-45"},"name":null,"routingNumber":null,"routingNumberISPB":null},"paymentMethod":"BOLETO","reason":null,"receiver":{"accountNumber":null,"branchNumber":null,"documentNumber":{"type":"CNPJ","value":"17.819.084/0001-92"},"name":"PAGCERTO  INSTITUICAO   DE   PAGAMENTO  LTDA","routingNumber":"633","routingNumberISPB":"68900810"},"receiverReferenceId":null,"referenceNumber":null,"boletoMetadata":null}
+Operation Type: BOLETO
+
+-------------------------------------------
+ID: 25746c56-0ec0-4f1a-9c80-c8a8c3391d51
+Data: 2026-06-09T03:00:00.000Z
+Descrição: DÉB.TÍTULO COBRANÇA
+Tipo: DEBIT
+Valor: -700.39
+Status: POSTED
+Categoria: Services
+Payment Data: {"payer":{"accountNumber":null,"branchNumber":null,"documentNumber":{"type":"CNPJ","value":"10.480.352/0001-45"},"name":null,"routingNumber":null,"routingNumberISPB":null},"paymentMethod":"BOLETO","reason":null,"receiver":{"accountNumber":null,"branchNumber":null,"documentNumber":{"type":"CNPJ","value":"09.206.907/0001-86"},"name":"MUNDIAL INOX LTDA","routingNumber":"756","routingNumberISPB":"02038232"},"receiverReferenceId":null,"referenceNumber":null,"boletoMetadata":null}
+Operation Type: BOLETO
+
+-------------------------------------------
+ID: aea8423f-3940-4320-b0f6-94e511ae2a12
+Data: 2026-06-09T03:00:00.000Z
+Descrição: DÉB.TIT.COMPE EFETIVADO
+Tipo: DEBIT
+Valor: -855.61
+Status: POSTED
+Categoria: Services
+Payment Data: {"payer":{"accountNumber":null,"branchNumber":null,"documentNumber":{"type":"CNPJ","value":"10.480.352/0001-45"},"name":null,"routingNumber":null,"routingNumberISPB":null},"paymentMethod":"BOLETO","reason":null,"receiver":{"accountNumber":null,"branchNumber":null,"documentNumber":{"type":"CNPJ","value":"08.663.376/0001-98"},"name":"TECKNO - FREIO E EMBREAGEM INDUSTRIAL LTDA","routingNumber":"077","routingNumberISPB":"00416968"},"receiverReferenceId":null,"referenceNumber":null,"boletoMetadata":null}
+Operation Type: BOLETO
+
+-------------------------------------------
+ID: ae92d86e-7661-45db-b9d6-c8ad8779f741
+Data: 2026-06-09T03:00:00.000Z
+Descrição: DÉB.TIT.COMPE EFETIVADO
+Tipo: DEBIT
+Valor: -3882.12
+Status: POSTED
+Categoria: Mutual funds
+Payment Data: {"payer":{"accountNumber":null,"branchNumber":null,"documentNumber":{"type":"CNPJ","value":"10.480.352/0001-45"},"name":null,"routingNumber":null,"routingNumberISPB":null},"paymentMethod":"BOLETO","reason":null,"receiver":{"accountNumber":null,"branchNumber":null,"documentNumber":{"type":"CNPJ","value":"19.390.746/0001-87"},"name":"ATLAS FUNDO DE  INVESTIMENTO EM DIREITOS CREDITORIOS DE RESPONSABILIDADE LIMITADA","routingNumber":"237","routingNumberISPB":"60746948"},"receiverReferenceId":null,"referenceNumber":null,"boletoMetadata":null}
+Operation Type: BOLETO
+
+-------------------------------------------
+ID: 379471ec-99ac-4111-9009-42dbf64f08db
+Data: 2026-06-09T03:00:00.000Z
+Descrição: DÉB.TIT.COMPE EFETIVADO
+Tipo: DEBIT
+Valor: -1643.78
+Status: POSTED
+Categoria: Office supplies
+Payment Data: {"payer":{"accountNumber":null,"branchNumber":null,"documentNumber":{"type":"CNPJ","value":"10.480.352/0001-45"},"name":null,"routingNumber":null,"routingNumberISPB":null},"paymentMethod":"BOLETO","reason":null,"receiver":{"accountNumber":null,"branchNumber":null,"documentNumber":{"type":"CNPJ","value":"03.068.919/0001-05"},"name":"IND. E COM. DE ETIQUETAS ADESIVAS ZANDONA LTDA","routingNumber":"341","routingNumberISPB":"60701190"},"receiverReferenceId":null,"referenceNumber":null,"boletoMetadata":null}
+Operation Type: BOLETO
+
+-------------------------------------------
+ID: 21f5c675-13b2-42fd-89dd-9f8730483899
+Data: 2026-06-09T03:00:00.000Z
+Descrição: DÉB.TIT.COMPE EFETIVADO
+Tipo: DEBIT
+Valor: -3967.45
+Status: POSTED
+Categoria: Services
+Payment Data: {"payer":{"accountNumber":null,"branchNumber":null,"documentNumber":{"type":"CNPJ","value":"10.480.352/0001-45"},"name":null,"routingNumber":null,"routingNumberISPB":null},"paymentMethod":"BOLETO","reason":null,"receiver":{"accountNumber":null,"branchNumber":null,"documentNumber":{"type":"CNPJ","value":"47.735.733/0001-38"},"name":"MOMPLASTIC INDUSTRIA E COMERCIO DE PLASTICOS LTDA","routingNumber":"748","routingNumberISPB":"01181521"},"receiverReferenceId":null,"referenceNumber":null,"boletoMetadata":null}
+Operation Type: BOLETO
+
+-------------------------------------------
+ID: df612b02-4e80-4d8e-808b-321ede43c632
+Data: 2026-06-09T03:00:00.000Z
+Descrição: DÉB.TIT.COMPE EFETIVADO
+Tipo: DEBIT
+Valor: -325.35
+Status: POSTED
+Categoria: Insurance
+Payment Data: {"payer":{"accountNumber":null,"branchNumber":null,"documentNumber":{"type":"CNPJ","value":"10.480.352/0001-45"},"name":null,"routingNumber":null,"routingNumberISPB":null},"paymentMethod":"BOLETO","reason":null,"receiver":{"accountNumber":null,"branchNumber":null,"documentNumber":{"type":"CNPJ","value":"61.198.164/0001-60"},"name":"PORTO SEGURO COMPANHIA DE SEGUROS GERAIS","routingNumber":"341","routingNumberISPB":"60701190"},"receiverReferenceId":null,"referenceNumber":null,"boletoMetadata":null}
+Operation Type: BOLETO
+
+-------------------------------------------
+ID: 8aaaf072-7021-4b9a-8a22-8d42d22d1005
+Data: 2026-06-09T03:00:00.000Z
+Descrição: DÉB.TIT.COMPE EFETIVADO
+Tipo: DEBIT
+Valor: -2737.16
+Status: POSTED
+Categoria: Services
+Payment Data: {"payer":{"accountNumber":null,"branchNumber":null,"documentNumber":{"type":"CNPJ","value":"10.480.352/0001-45"},"name":null,"routingNumber":null,"routingNumberISPB":null},"paymentMethod":"BOLETO","reason":null,"receiver":{"accountNumber":null,"branchNumber":null,"documentNumber":{"type":"CNPJ","value":"49.343.239/0001-53"},"name":"MINERGEO ASSESSORIA E PROJETOS EM GEOLOGIA, MINERACAO E MEIO AMBIENTE LTDA","routingNumber":"401","routingNumberISPB":"15111975"},"receiverReferenceId":null,"referenceNumber":null,"boletoMetadata":null}
+Operation Type: BOLETO
+
+-------------------------------------------
+ID: 4cdbfb26-964b-4f33-8ce3-806cfe9ed442
+Data: 2026-06-09T03:00:00.000Z
+Descrição: LIBERAÇÃO DE DEPÓSITO BLOQUEADO
+Tipo: CREDIT
+Valor: 1825
+Status: POSTED
+Categoria: Blocked balances
+Payment Data: {"payer":null,"paymentMethod":"OTHER","reason":null,"receiver":{"accountNumber":null,"branchNumber":null,"documentNumber":{"type":"CNPJ","value":"10.480.352/0001-45"},"name":null,"routingNumber":null,"routingNumberISPB":null},"receiverReferenceId":null,"referenceNumber":null,"boletoMetadata":null}
+Operation Type: OUTROS
+
+-------------------------------------------
+ID: 16cea59f-f524-43a6-a99a-1b00c13c4ee5
+Data: 2026-06-09T03:00:00.000Z
+Descrição: TARIFA COBRANÇA
+Tipo: DEBIT
+Valor: -26.1
+Status: POSTED
+Categoria: Account fees
+Payment Data: {"payer":{"accountNumber":null,"branchNumber":null,"documentNumber":{"type":"CNPJ","value":"10.480.352/0001-45"},"name":null,"routingNumber":null,"routingNumberISPB":null},"paymentMethod":"OTHER","reason":null,"receiver":null,"receiverReferenceId":null,"referenceNumber":null,"boletoMetadata":null}
+Operation Type: TARIFA_SERVICOS_AVULSOS
+
+-------------------------------------------
+ID: 9ca1ecb2-cdaa-41cb-8165-dd638f3868af
+Data: 2026-06-09T03:00:00.000Z
+Descrição: CRÉD.LIQUIDAÇÃO COBRANÇA
+Tipo: CREDIT
+Valor: 1570.11
+Status: POSTED
+Categoria: Late payment and overdraft costs
+Payment Data: {"payer":null,"paymentMethod":"OTHER","reason":null,"receiver":{"accountNumber":null,"branchNumber":null,"documentNumber":{"type":"CNPJ","value":"10.480.352/0001-45"},"name":null,"routingNumber":null,"routingNumberISPB":null},"receiverReferenceId":null,"referenceNumber":null,"boletoMetadata":null}
+Operation Type: OUTROS
+
+-------------------------------------------
+ID: 47a1c75e-6226-46a7-847e-dd0b91c469c4
+Data: 2026-06-09T03:00:00.000Z
+Descrição: CRÉD.LIQUIDAÇÃO COBRANÇA
+Tipo: CREDIT
+Valor: 1739.21
+Status: POSTED
+Categoria: Late payment and overdraft costs
+Payment Data: {"payer":null,"paymentMethod":"OTHER","reason":null,"receiver":{"accountNumber":null,"branchNumber":null,"documentNumber":{"type":"CNPJ","value":"10.480.352/0001-45"},"name":null,"routingNumber":null,"routingNumberISPB":null},"receiverReferenceId":null,"referenceNumber":null,"boletoMetadata":null}
+Operation Type: OUTROS
+
+-------------------------------------------
+ID: 9cf5c2b1-1dff-4bfd-ae75-63c9869f7e2a
+Data: 2026-06-09T03:00:00.000Z
+Descrição: CRÉD.LIQUIDAÇÃO COBRANÇA
+Tipo: CREDIT
+Valor: 5325.85
+Status: POSTED
+Categoria: Late payment and overdraft costs
+Payment Data: {"payer":null,"paymentMethod":"OTHER","reason":null,"receiver":{"accountNumber":null,"branchNumber":null,"documentNumber":{"type":"CNPJ","value":"10.480.352/0001-45"},"name":null,"routingNumber":null,"routingNumberISPB":null},"receiverReferenceId":null,"referenceNumber":null,"boletoMetadata":null}
+Operation Type: OUTROS
+
+-------------------------------------------
+ID: 7550c78f-f2f3-43cf-9f11-21e802dceabb
+Data: 2026-06-09T03:00:00.000Z
+Descrição: CRÉD.LIQUIDAÇÃO COBRANÇA
+Tipo: CREDIT
+Valor: 4576.41
+Status: POSTED
+Categoria: Late payment and overdraft costs
+Payment Data: {"payer":null,"paymentMethod":"OTHER","reason":null,"receiver":{"accountNumber":null,"branchNumber":null,"documentNumber":{"type":"CNPJ","value":"10.480.352/0001-45"},"name":null,"routingNumber":null,"routingNumberISPB":null},"receiverReferenceId":null,"referenceNumber":null,"boletoMetadata":null}
+Operation Type: OUTROS
+
+-------------------------------------------
+ID: 93fc128d-be9c-4653-8f2f-a7c057d57cf5
+Data: 2026-06-09T03:00:00.000Z
+Descrição: CRÉD.LIQUIDAÇÃO COBRANÇA
+Tipo: CREDIT
+Valor: 1955.96
+Status: POSTED
+Categoria: Late payment and overdraft costs
+Payment Data: {"payer":null,"paymentMethod":"OTHER","reason":null,"receiver":{"accountNumber":null,"branchNumber":null,"documentNumber":{"type":"CNPJ","value":"10.480.352/0001-45"},"name":null,"routingNumber":null,"routingNumberISPB":null},"receiverReferenceId":null,"referenceNumber":null,"boletoMetadata":null}
+Operation Type: OUTROS
+
+-------------------------------------------
+ID: 8e8c1f02-3fac-4569-997d-b36cf29c34ae
+Data: 2026-06-09T03:00:00.000Z
+Descrição: CRÉD.LIQUIDAÇÃO COBRANÇA
+Tipo: CREDIT
+Valor: 513.58
+Status: POSTED
+Categoria: Late payment and overdraft costs
+Payment Data: {"payer":null,"paymentMethod":"OTHER","reason":null,"receiver":{"accountNumber":null,"branchNumber":null,"documentNumber":{"type":"CNPJ","value":"10.480.352/0001-45"},"name":null,"routingNumber":null,"routingNumberISPB":null},"receiverReferenceId":null,"referenceNumber":null,"boletoMetadata":null}
+Operation Type: OUTROS
+
+-------------------------------------------
+ID: ec614a75-048b-4487-8f05-9c4b95b3536c
+Data: 2026-06-09T03:00:00.000Z
+Descrição: LIBERAÇÃO DE DEPÓSITO BLOQUEADO
+Tipo: CREDIT
+Valor: 1970.72
+Status: POSTED
+Categoria: Blocked balances
+Payment Data: {"payer":null,"paymentMethod":"OTHER","reason":null,"receiver":{"accountNumber":null,"branchNumber":null,"documentNumber":{"type":"CNPJ","value":"10.480.352/0001-45"},"name":null,"routingNumber":null,"routingNumberISPB":null},"receiverReferenceId":null,"referenceNumber":null,"boletoMetadata":null}
+Operation Type: OUTROS
+
+-------------------------------------------
+ID: dcf81d14-8caf-4998-bfd9-2c1d6636c3cd
+Data: 2026-06-09T03:00:00.000Z
+Descrição: LIBERAÇÃO DE DEPÓSITO BLOQUEADO
+Tipo: CREDIT
+Valor: 901
+Status: POSTED
+Categoria: Blocked balances
+Payment Data: {"payer":null,"paymentMethod":"OTHER","reason":null,"receiver":{"accountNumber":null,"branchNumber":null,"documentNumber":{"type":"CNPJ","value":"10.480.352/0001-45"},"name":null,"routingNumber":null,"routingNumberISPB":null},"receiverReferenceId":null,"referenceNumber":null,"boletoMetadata":null}
+Operation Type: OUTROS
+
+-------------------------------------------
+ID: 7a3e14ab-b758-40ad-928b-d13098cdee63
+Data: 2026-06-09T03:00:00.000Z
+Descrição: DEVOL.CHEQUE DEPOSITADO
+Tipo: DEBIT
+Valor: -1825
+Status: POSTED
+Categoria: Transfer - Check
+Payment Data: {"payer":{"accountNumber":null,"branchNumber":null,"documentNumber":{"type":"CNPJ","value":"10.480.352/0001-45"},"name":null,"routingNumber":null,"routingNumberISPB":null},"paymentMethod":"OTHER","reason":null,"receiver":null,"receiverReferenceId":null,"referenceNumber":null,"boletoMetadata":null}
+Operation Type: OUTROS
+
+
+=== CONTA: SICOOB MASTERCARD EMPRESARIAL PRO ===
+
+Total transações: 0
+

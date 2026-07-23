@@ -27,6 +27,7 @@ export default function Dashboard() {
   const [search, setSearch] = useState('');
   const [showModal, setShowModal] = useState(false);
   const [newName, setNewName] = useState('');
+  const [newCnpj, setNewCnpj] = useState('');
   const [creating, setCreating] = useState(false);
   const [copiedId, setCopiedId] = useState(null);
   const [fetchError, setFetchError] = useState('');
@@ -82,14 +83,20 @@ export default function Dashboard() {
   const createClient = async (e) => {
     e.preventDefault();
     if (!newName.trim()) return;
+    const rawCnpj = newCnpj.replace(/\D/g, '');
+    if (rawCnpj && rawCnpj.length !== 14) {
+      alert('CNPJ inválido. Digite 14 dígitos ou deixe em branco.');
+      return;
+    }
     setCreating(true);
     const res = await fetch('/api/clients', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: newName }),
+      body: JSON.stringify({ name: newName, businessTaxId: rawCnpj || undefined }),
     });
     if (res.ok) {
       setNewName('');
+      setNewCnpj('');
       setShowModal(false);
       fetchClients();
     }
@@ -118,7 +125,7 @@ export default function Dashboard() {
             </div>
             <div>
               <h1 className="text-base font-bold text-gray-900 leading-tight">Extrator Bancário</h1>
-              <p className="text-xs text-gray-400">Powered by Pluggy</p>
+              <p className="text-xs text-gray-400">Open Finance · Klavi</p>
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -280,13 +287,23 @@ export default function Dashboard() {
                 value={newName}
                 onChange={(e) => setNewName(e.target.value)}
                 placeholder="Ex: João Silva"
-                className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 mb-5"
+                className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 mb-4"
                 autoFocus
+              />
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                CNPJ <span className="text-gray-400 font-normal">(opcional)</span>
+              </label>
+              <input
+                type="text"
+                value={newCnpj}
+                onChange={(e) => setNewCnpj(e.target.value)}
+                placeholder="00.000.000/0000-00"
+                className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 mb-5"
               />
               <div className="flex gap-2 justify-end">
                 <button
                   type="button"
-                  onClick={() => { setShowModal(false); setNewName(''); }}
+                  onClick={() => { setShowModal(false); setNewName(''); setNewCnpj(''); }}
                   className="px-4 py-2 text-sm text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
                 >
                   Cancelar

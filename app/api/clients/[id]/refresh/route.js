@@ -1,14 +1,21 @@
 import { NextResponse } from 'next/server';
-import { getClientById, getItemsByClientId } from '@/lib/storage';
-import { getItem, updatePluggyItem, waitForItemUpdate } from '@/lib/pluggy';
-import { buildItemStatusUpdates, isItemHealthy, isItemUpdating } from '@/lib/status';
-import { syncItemData } from '@/lib/sync-processor';
+import { getClientById, getItemsByClientId, updateClient } from '@/lib/storage';
+import { requestBusinessInstitutionData, getConsentList } from '@/lib/klavi';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
 
-const PLUGGY_MIN_UPDATE_FREQUENCY_MS = 60 * 60 * 1000;
-const WAIT_FOR_UPDATE_MS = 30_000;
+const DEFAULT_PRODUCTS = [
+  'pj_checking_account',
+  'pj_savings_account',
+  'pj_credit_card',
+  'pj_loans',
+  'pj_financings',
+  'pj_investments_bank_fixed_incomes',
+  'pj_investments_credit_fixed_incomes',
+  'pj_investments_variable_incomes',
+  'pj_investments_funds',
+];
 
 export async function POST(request, { params }) {
   const { id } = await params;
@@ -18,65 +25,64 @@ export async function POST(request, { params }) {
   try {
     const client = await getClientById(id);
     if (!client) return NextResponse.json({ error: 'Cliente não encontrado' }, { status: 404 });
+    if (!client.businessTaxId) {
+      return NextResponse.json({ error: 'Cliente não possui CNPJ cadastrado' }, { status: 400 });
+    }
 
     const items = await getItemsByClientId(id);
     const toProcess = itemId ? items.filter(i => i.id === itemId) : items;
-
-    if (toProcess.length === 0) {
-      return NextResponse.json({ error: 'Nenhuma conta encontrada para atualizar' }, { status: 400 });
-    }
+    const klaviItems = toProcess.filter(i => i.provider === 'klavi' || i.klaviLinkId);
 
     const results = [];
 
-    for (const item of toProcess) {
-      let pluggyItem;
-      try {
-        pluggyItem = await getItem(item.pluggyItemId);
-      } catch (err) {
-        results.push({ itemId: item.id, bank: item.institutionName, success: false, reason: err.message });
-        continue;
-      }
-
-      const norm = buildItemStatusUpdates(pluggyItem);
-
-      if (norm.status === 'LOGIN_ERROR') {
-        results.push({ itemId: item.id, bank: item.institutionName, success: false, requiresReconnect: true, reason: norm.errorMessage || norm.errorCode });
-        continue;
-      }
-
-      const lastUpdatedAt = norm.lastUpdatedAt ? new Date(norm.lastUpdatedAt).getTime() : 0;
-      const timeSinceUpdate = Date.now() - lastUpdatedAt;
-
-      if (!isItemHealthy(norm.status) && norm.status !== 'OUTDATED') {
-        results.push({ itemId: item.id, bank: item.institutionName, success: false, status: norm.status, reason: 'Status não permite atualização' });
-        continue;
-      }
-
-      if (isItemHealthy(norm.status) && timeSinceUpdate < PLUGGY_MIN_UPDATE_FREQUENCY_MS) {
-        results.push({ itemId: item.id, bank: item.institutionName, success: false, reason: `Atualizado há ${Math.round(timeSinceUpdate / 1000)}s. Tente novamente em ${Math.round((PLUGGY_MIN_UPDATE_FREQUENCY_MS - timeSinceUpdate) / 1000)}s.` });
+    for (const item of klaviItems) {
+      if (!item.klaviLinkId || !item.businessTaxId || !item.institutionCode) {
+        results.push({
+          itemId: item.id,
+          bank: item.institutionName,
+          success: false,
+          reason: 'Item Klavi incompleto (link, cnpj ou instituição faltando)',
+        });
         continue;
       }
 
       try {
-        const patchResult = await updatePluggyItem(item.pluggyItemId);
-        if (isItemUpdating(patchResult?.status)) {
-          await waitForItemUpdate(item.pluggyItemId, { timeoutMs: WAIT_FOR_UPDATE_MS, intervalMs: 3000 });
-        }
+        await requestBusinessInstitutionData({
+          businessTaxId: item.businessTaxId,
+          institutionCode: item.institutionCode,
+          linkId: item.klaviLinkId,
+          consentIds: item.klaviConsentId ? [item.klaviConsentId] : undefined,
+          products: DEFAULT_PRODUCTS,
+        });
+        results.push({
+          itemId: item.id,
+          bank: item.institutionName,
+          success: true,
+          status: 'REQUESTED',
+          message: 'Solicitação de relatório enviada. Dados chegarão via webhook.',
+        });
       } catch (err) {
-        results.push({ itemId: item.id, bank: item.institutionName, success: false, reason: `Falha ao atualizar: ${err.message}` });
-        continue;
+        results.push({
+          itemId: item.id,
+          bank: item.institutionName,
+          success: false,
+          reason: err.message,
+        });
       }
+    }
 
-      const syncResult = await syncItemData(item, { skipIfNotHealthy: true });
+    // Itens legados Pluggy não são mais atualizados; avisamos no resultado.
+    const legacyItems = toProcess.filter(i => i.provider === 'pluggy' && i.pluggyItemId);
+    for (const item of legacyItems) {
       results.push({
         itemId: item.id,
         bank: item.institutionName,
-        success: syncResult.success,
-        status: syncResult.status,
-        transactions: syncResult.transactions,
-        reason: syncResult.reason,
+        success: false,
+        reason: 'Item Pluggy legado. Reconecte pelo portal para usar Klavi.',
       });
     }
+
+    await updateClient(id, { lastSync: new Date().toISOString() });
 
     return NextResponse.json({ refreshed_at: new Date().toISOString(), results });
   } catch (error) {
