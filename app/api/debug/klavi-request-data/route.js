@@ -31,7 +31,7 @@ export async function POST(request) {
       institutionCode: item.institutionCode,
       linkId: item.klaviLinkId,
       consentIds: item.klaviConsentId ? [item.klaviConsentId] : undefined,
-      products: DEFAULT_PRODUCTS,
+      products: body.products || DEFAULT_PRODUCTS,
       productsCallbackUrl: process.env.KLAVI_WEBHOOK_URL || null,
     });
 
