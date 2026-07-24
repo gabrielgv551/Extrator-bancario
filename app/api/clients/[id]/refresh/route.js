@@ -93,38 +93,40 @@ export async function POST(request, { params }) {
         if (isInvalidProduct) {
           const personalTaxId = await resolvePersonalTaxId(item);
           if (personalTaxId) {
-            const pfRequestBody = {
-              personalTaxId: personalTaxId,
-              institutionCode: item.institutionCode,
-              linkId: item.klaviLinkId,
-              consentIds: item.klaviConsentId ? [item.klaviConsentId] : undefined,
-              products: DEFAULT_PRODUCTS,
-              productsCallbackUrl: process.env.KLAVI_WEBHOOK_URL || null,
-            };
-            console.log('[refresh] tentando fallback PF:', JSON.stringify(pfRequestBody));
-            await requestPersonalInstitutionData(pfRequestBody);
-            await updateItemStatus(item.id, { status: 'UPDATING' });
-            results.push({
-              itemId: item.id,
-              bank: item.institutionName,
-              success: true,
-              status: 'REQUESTED_PF',
-              message: 'Solicitação de relatório PF enviada. Dados chegarão via webhook.',
-            });
-            continue;
-          } catch (pfErr) {
-            console.error('[refresh] erro também no fallback PF:', pfErr);
-            results.push({
-              itemId: item.id,
-              bank: item.institutionName,
-              success: false,
-              reason: pfErr.message,
-              klaviStatus: pfErr.status,
-              klaviCode: pfErr.code,
-              klaviBody: pfErr.body,
-              attempted: 'PF fallback',
-            });
-            continue;
+            try {
+              const pfRequestBody = {
+                personalTaxId: personalTaxId,
+                institutionCode: item.institutionCode,
+                linkId: item.klaviLinkId,
+                consentIds: item.klaviConsentId ? [item.klaviConsentId] : undefined,
+                products: DEFAULT_PRODUCTS,
+                productsCallbackUrl: process.env.KLAVI_WEBHOOK_URL || null,
+              };
+              console.log('[refresh] tentando fallback PF:', JSON.stringify(pfRequestBody));
+              await requestPersonalInstitutionData(pfRequestBody);
+              await updateItemStatus(item.id, { status: 'UPDATING' });
+              results.push({
+                itemId: item.id,
+                bank: item.institutionName,
+                success: true,
+                status: 'REQUESTED_PF',
+                message: 'Solicitação de relatório PF enviada. Dados chegarão via webhook.',
+              });
+              continue;
+            } catch (pfErr) {
+              console.error('[refresh] erro também no fallback PF:', pfErr);
+              results.push({
+                itemId: item.id,
+                bank: item.institutionName,
+                success: false,
+                reason: pfErr.message,
+                klaviStatus: pfErr.status,
+                klaviCode: pfErr.code,
+                klaviBody: pfErr.body,
+                attempted: 'PF fallback',
+              });
+              continue;
+            }
           }
         }
 
