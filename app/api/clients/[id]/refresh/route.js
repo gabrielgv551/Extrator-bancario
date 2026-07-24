@@ -64,6 +64,41 @@ export async function POST(request, { params }) {
       return null;
     }
 
+    async function resolveActiveConsent(item) {
+      if (!item.klaviLinkId && !item.klaviConsentId) return null;
+      try {
+        const list = await getConsentList({
+          linkId: item.klaviLinkId || undefined,
+          businessTaxId: item.businessTaxId || clientBusinessTaxId || undefined,
+          personalTaxId: item.personalTaxId || undefined,
+        });
+        const consents = Array.isArray(list) ? list : (list?.consents || []);
+        // Consentimentos autorizados para a mesma instituição, do mais recente ao mais antigo.
+        const authorised = consents
+          .filter(c =>
+            String(c.institutionCode).toLowerCase() === String(item.institutionCode).toLowerCase() &&
+            ['authorised', 'authorized'].includes(String(c.status).toLowerCase())
+          )
+          .sort((a, b) => {
+            const da = a.updatedAt || a.createdAt || a.consentId;
+            const db = b.updatedAt || b.createdAt || b.consentId;
+            return String(db).localeCompare(String(da));
+          });
+        if (authorised.length > 0) {
+          const chosen = authorised[0];
+          const consentId = chosen.consentId || chosen.consentid;
+          if (consentId && consentId !== item.klaviConsentId) {
+            console.log('[refresh] consentimento autorizado atualizado para item=%s: %s', item.id, consentId);
+            await updateItemStatus(item.id, { klaviConsentId: consentId });
+          }
+          return consentId;
+        }
+      } catch (err) {
+        console.warn('[refresh] falha ao buscar consentimentos ativos:', err.message);
+      }
+      return item.klaviConsentId || null;
+    }
+
     for (const item of klaviItems) {
       const isPF = item.taxType === 'pf';
       const itemBusinessTaxId = item.businessTaxId || clientBusinessTaxId;
@@ -77,6 +112,8 @@ export async function POST(request, { params }) {
         continue;
       }
 
+      const activeConsentId = await resolveActiveConsent(item);
+
       if (isPF) {
         const personalTaxId = item.personalTaxId || await resolvePersonalTaxId(item);
         if (!personalTaxId) {
@@ -88,12 +125,21 @@ export async function POST(request, { params }) {
           });
           continue;
         }
+        if (!activeConsentId) {
+          results.push({
+            itemId: item.id,
+            bank: item.institutionName,
+            success: false,
+            reason: 'Nenhum consentimento ativo encontrado para este banco. Reconecte pelo portal.',
+          });
+          continue;
+        }
         try {
           const pfRequestBody = {
             personalTaxId,
             institutionCode: item.institutionCode,
             linkId: item.klaviLinkId,
-            consentIds: item.klaviConsentId ? [item.klaviConsentId] : undefined,
+            consentIds: [activeConsentId],
             products: DEFAULT_PRODUCTS,
             productsCallbackUrl: process.env.KLAVI_WEBHOOK_URL || null,
           };
@@ -122,12 +168,22 @@ export async function POST(request, { params }) {
         continue;
       }
 
+      if (!activeConsentId) {
+        results.push({
+          itemId: item.id,
+          bank: item.institutionName,
+          success: false,
+          reason: 'Nenhum consentimento ativo encontrado para este banco. Reconecte pelo portal.',
+        });
+        continue;
+      }
+
       try {
         const requestBody = {
           businessTaxId: itemBusinessTaxId,
           institutionCode: item.institutionCode,
           linkId: item.klaviLinkId,
-          consentIds: item.klaviConsentId ? [item.klaviConsentId] : undefined,
+          consentIds: [activeConsentId],
           products: DEFAULT_PRODUCTS,
           productsCallbackUrl: process.env.KLAVI_WEBHOOK_URL || null,
         };
@@ -158,7 +214,7 @@ export async function POST(request, { params }) {
                 personalTaxId: personalTaxId,
                 institutionCode: item.institutionCode,
                 linkId: item.klaviLinkId,
-                consentIds: item.klaviConsentId ? [item.klaviConsentId] : undefined,
+                consentIds: [activeConsentId],
                 products: DEFAULT_PRODUCTS,
                 productsCallbackUrl: process.env.KLAVI_WEBHOOK_URL || null,
               };
