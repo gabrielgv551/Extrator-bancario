@@ -264,6 +264,18 @@ export async function POST(request, { params }) {
           klaviStatus: err.status,
           klaviCode: err.code,
           klaviBody: err.body,
+          debug: {
+            activeConsentId,
+            activeLinkId,
+            itemLinkId: item.klaviLinkId,
+            itemConsentId: item.klaviConsentId,
+            requestBody: {
+              businessTaxId: itemBusinessTaxId,
+              institutionCode: item.institutionCode,
+              linkId: activeLinkId,
+              consentIds: [activeConsentId],
+            },
+          },
         });
       }
     }
