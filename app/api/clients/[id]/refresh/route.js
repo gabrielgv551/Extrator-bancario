@@ -5,17 +5,7 @@ import { requestBusinessInstitutionData } from '@/lib/klavi';
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
 
-const DEFAULT_PRODUCTS = [
-  'pj_checking_account',
-  'pj_savings_account',
-  'pj_credit_card',
-  'pj_loans',
-  'pj_financings',
-  'pj_investments_bank_fixed_incomes',
-  'pj_investments_credit_fixed_incomes',
-  'pj_investments_variable_incomes',
-  'pj_investments_funds',
-];
+const DEFAULT_PRODUCTS = ['all'];
 
 export async function POST(request, { params }) {
   const { id } = await params;
