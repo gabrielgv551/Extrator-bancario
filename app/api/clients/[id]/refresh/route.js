@@ -232,7 +232,7 @@ export async function POST(request, { params }) {
           products: activeProducts,
           productsCallbackUrl: process.env.KLAVI_WEBHOOK_URL || null,
         };
-        console.log('[refresh] solicitando dados Klavi PJ (sem link/consent):', JSON.stringify(requestBody));
+        console.log('[refresh] solicitando dados Klavi PJ:', JSON.stringify(requestBody));
         await requestBusinessInstitutionData(requestBody);
 
         await updateItemStatus(item.id, { status: 'UPDATING' });
@@ -247,77 +247,6 @@ export async function POST(request, { params }) {
       } catch (err) {
         console.error('[refresh] erro ao solicitar dados PJ:', err);
         console.error('[refresh] body do erro:', err.body, 'status:', err.status, 'code:', err.code);
-
-        // Fallback para PF: MEI/contas pessoais podem retornar 4002 no endpoint business.
-        const isInvalidProduct = err.status === 416 && err.body?.statusCode === 4002;
-        console.log('[refresh] avaliando fallback:', { isInvalidProduct, status: err.status, statusCode: err.body?.statusCode, hasPersonal: !!item.personalTaxId });
-        if (isInvalidProduct) {
-          const personalTaxId = await resolvePersonalTaxId(item);
-          if (personalTaxId) {
-            try {
-              const pfRequestBody = {
-                personalTaxId: personalTaxId,
-                institutionCode: item.institutionCode,
-                linkId: activeLinkId,
-                consentIds: [activeConsentId],
-                products: activeProducts,
-                productsCallbackUrl: process.env.KLAVI_WEBHOOK_URL || null,
-              };
-              console.log('[refresh] tentando fallback PF:', JSON.stringify(pfRequestBody));
-              await requestPersonalInstitutionData(pfRequestBody);
-              await updateItemStatus(item.id, { status: 'UPDATING' });
-              results.push({
-                itemId: item.id,
-                bank: item.institutionName,
-                success: true,
-                status: 'REQUESTED_PF',
-                message: 'Solicitação de relatório PF enviada. Dados chegarão via webhook.',
-              });
-              continue;
-            } catch (pfErr) {
-              console.error('[refresh] erro também no fallback PF:', pfErr);
-              results.push({
-                itemId: item.id,
-                bank: item.institutionName,
-                success: false,
-                reason: pfErr.message,
-                klaviStatus: pfErr.status,
-                klaviCode: pfErr.code,
-                klaviBody: pfErr.body,
-                attempted: 'PF fallback',
-                debug: {
-                  activeConsentId,
-                  activeLinkId,
-                  itemLinkId: item.klaviLinkId,
-                  itemConsentId: item.klaviConsentId,
-                  businessError: {
-                    status: err.status,
-                    statusCode: err.body?.statusCode,
-                    message: err.message,
-                    requestBody: {
-                      businessTaxId: itemBusinessTaxId,
-                      institutionCode: item.institutionCode,
-                      linkId: activeLinkId,
-                      consentIds: [activeConsentId],
-                      products: activeProducts,
-                      productsCallbackUrl: process.env.KLAVI_WEBHOOK_URL || null,
-                    },
-                  },
-                  pfRequestBody: {
-                    personalTaxId,
-                    institutionCode: item.institutionCode,
-                    linkId: activeLinkId,
-                    consentIds: [activeConsentId],
-                    products: activeProducts,
-                    productsCallbackUrl: process.env.KLAVI_WEBHOOK_URL || null,
-                  },
-                  rawConsent: activeConsent.rawConsent || null,
-                },
-              });
-              continue;
-            }
-          }
-        }
 
         results.push({
           itemId: item.id,
