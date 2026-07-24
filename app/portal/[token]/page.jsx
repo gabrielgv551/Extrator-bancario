@@ -149,6 +149,7 @@ export default function PortalPage({ params }) {
           institutionName: connector.name,
           institutionLogo: connector.avatar || null,
           businessTaxId,
+          personalTaxId,
           status: 'WAITING_DATA',
         }),
       });

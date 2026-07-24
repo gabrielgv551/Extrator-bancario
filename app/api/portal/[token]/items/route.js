@@ -34,6 +34,7 @@ export async function POST(request, { params }) {
         institutionLogo: body.institutionLogo || null,
         accountNumbers: body.accountNumbers || null,
         businessTaxId: body.businessTaxId || null,
+        personalTaxId: body.personalTaxId || null,
         status: body.status || 'WAITING_DATA',
       });
       return NextResponse.json(item, { status: 201 });
