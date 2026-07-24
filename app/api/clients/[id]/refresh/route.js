@@ -250,6 +250,19 @@ export async function POST(request, { params }) {
                 klaviCode: pfErr.code,
                 klaviBody: pfErr.body,
                 attempted: 'PF fallback',
+                debug: {
+                  activeConsentId,
+                  activeLinkId,
+                  itemLinkId: item.klaviLinkId,
+                  itemConsentId: item.klaviConsentId,
+                  businessError: { status: err.status, statusCode: err.body?.statusCode, message: err.message },
+                  pfRequestBody: {
+                    personalTaxId,
+                    institutionCode: item.institutionCode,
+                    linkId: activeLinkId,
+                    consentIds: [activeConsentId],
+                  },
+                },
               });
               continue;
             }
