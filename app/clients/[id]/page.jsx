@@ -18,6 +18,7 @@ import {
   Trash2,
   Pencil,
   X,
+  FlaskConical,
 } from 'lucide-react';
 
 export default function ClientPage({ params }) {
@@ -42,6 +43,8 @@ export default function ClientPage({ params }) {
   const [cnpjInput, setCnpjInput] = useState('');
   const [savingCnpj, setSavingCnpj] = useState(false);
   const [gestorCompanies, setGestorCompanies] = useState([]);
+  const [testingProducts, setTestingProducts] = useState(null);
+  const [productTestResult, setProductTestResult] = useState(null);
 
   const today = new Date().toISOString().split('T')[0];
   const [fromDate, setFromDate] = useState('2026-01-01');
@@ -186,6 +189,26 @@ export default function ClientPage({ params }) {
     setRefreshing(false);
   };
 
+  const testProducts = async (itemId) => {
+    setTestingProducts(itemId);
+    setProductTestResult(null);
+    try {
+      const res = await fetch('/api/debug/klavi-product-test', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ itemId }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Erro ao testar produtos');
+      setProductTestResult(data);
+      console.log('[product test]', data);
+      const ok = (data.successfulProducts || []).join(', ') || 'Nenhum produto funcionou';
+      alert(`Produtos que funcionaram para ${data.institutionName || itemId}:\n${ok}`);
+    } catch (e) {
+      setError(e.message);
+    }
+    setTestingProducts(null);
+  };
 
   const connectBank = async () => {
     if (!client?.portalToken) return setError('Token do portal não disponível.');
@@ -415,6 +438,16 @@ export default function ClientPage({ params }) {
                     >
                       <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
                     </button>
+                    {item.klaviLinkId && (
+                      <button
+                        onClick={() => testProducts(item.id)}
+                        disabled={testingProducts === item.id}
+                        className="text-purple-400 hover:text-purple-600 hover:bg-purple-50 p-1.5 rounded-lg transition-colors"
+                        title="Testar produtos Klavi"
+                      >
+                        <FlaskConical className={`w-4 h-4 ${testingProducts === item.id ? 'animate-pulse' : ''}`} />
+                      </button>
+                    )}
                     <button onClick={() => removeBank(item.id, item.institutionName)} disabled={removingId === item.id} className="text-red-400 hover:text-red-600 p-1.5 rounded-lg hover:bg-red-50 transition-colors">
                       <Trash2 className="w-4 h-4" />
                     </button>
