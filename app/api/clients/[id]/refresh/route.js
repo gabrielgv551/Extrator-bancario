@@ -15,13 +15,26 @@ export async function POST(request, { params }) {
   try {
     const client = await getClientById(id);
     if (!client) return NextResponse.json({ error: 'Cliente não encontrado' }, { status: 404 });
-    if (!client.businessTaxId) {
-      return NextResponse.json({ error: 'Cliente não possui CNPJ cadastrado' }, { status: 400 });
-    }
 
     const items = await getItemsByClientId(id);
     const toProcess = itemId ? items.filter(i => i.id === itemId) : items;
     const klaviItems = toProcess.filter(i => i.provider === 'klavi' || i.klaviLinkId);
+
+    // Se o cliente ainda não tem CNPJ cadastrado, tenta usar o CNPJ dos itens Klavi PJ.
+    let clientBusinessTaxId = client.businessTaxId;
+    if (!clientBusinessTaxId) {
+      const itemCnpjs = [...new Set(klaviItems.map(i => i.businessTaxId).filter(Boolean))];
+      if (itemCnpjs.length === 1) {
+        clientBusinessTaxId = itemCnpjs[0];
+        await updateClient(id, { businessTaxId: clientBusinessTaxId });
+        console.log('[refresh] CNPJ do cliente preenchido a partir do item:', clientBusinessTaxId);
+      } else if (itemCnpjs.length > 1) {
+        return NextResponse.json({ error: 'Itens conectados usam CNPJs diferentes. Cadastre o CNPJ correto no cliente.' }, { status: 400 });
+      }
+    }
+    if (!clientBusinessTaxId) {
+      return NextResponse.json({ error: 'Cliente não possui CNPJ cadastrado' }, { status: 400 });
+    }
 
     const results = [];
 
@@ -31,7 +44,7 @@ export async function POST(request, { params }) {
       try {
         const list = await getConsentList({
           linkId: item.klaviLinkId || undefined,
-          businessTaxId: item.businessTaxId || undefined,
+          businessTaxId: item.businessTaxId || clientBusinessTaxId || undefined,
         });
         const consents = Array.isArray(list) ? list : (list?.consents || []);
         const match = consents.find(c =>
@@ -53,7 +66,8 @@ export async function POST(request, { params }) {
 
     for (const item of klaviItems) {
       const isPF = item.taxType === 'pf';
-      if (!item.klaviLinkId || !item.institutionCode || (!isPF && !item.businessTaxId)) {
+      const itemBusinessTaxId = item.businessTaxId || clientBusinessTaxId;
+      if (!item.klaviLinkId || !item.institutionCode || (!isPF && !itemBusinessTaxId)) {
         results.push({
           itemId: item.id,
           bank: item.institutionName,
@@ -110,7 +124,7 @@ export async function POST(request, { params }) {
 
       try {
         const requestBody = {
-          businessTaxId: item.businessTaxId,
+          businessTaxId: itemBusinessTaxId,
           institutionCode: item.institutionCode,
           linkId: item.klaviLinkId,
           consentIds: item.klaviConsentId ? [item.klaviConsentId] : undefined,

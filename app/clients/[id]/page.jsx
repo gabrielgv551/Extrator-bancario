@@ -38,11 +38,46 @@ export default function ClientPage({ params }) {
   const [editingEmpresa, setEditingEmpresa] = useState(false);
   const [empresaInput, setEmpresaInput] = useState('');
   const [savingEmpresa, setSavingEmpresa] = useState(false);
+  const [editingCnpj, setEditingCnpj] = useState(false);
+  const [cnpjInput, setCnpjInput] = useState('');
+  const [savingCnpj, setSavingCnpj] = useState(false);
   const [gestorCompanies, setGestorCompanies] = useState([]);
 
   const today = new Date().toISOString().split('T')[0];
   const [fromDate, setFromDate] = useState('2026-01-01');
   const [toDate, setToDate] = useState(today);
+
+  const formatCnpj = (value) => {
+    const digits = String(value || '').replace(/\D/g, '').slice(0, 14);
+    return digits.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, '$1.$2.$3/$4-$5');
+  };
+
+  const saveCnpj = async () => {
+    const raw = cnpjInput.replace(/\D/g, '');
+    if (raw && raw.length !== 14) {
+      setError('CNPJ inválido. Digite 14 dígitos ou deixe em branco.');
+      return;
+    }
+    setSavingCnpj(true);
+    setError('');
+    try {
+      const res = await fetch(`/api/clients/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ businessTaxId: raw || null }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setClient(data);
+        setEditingCnpj(false);
+      } else {
+        const data = await res.json();
+        setError(data.error || 'Erro ao salvar CNPJ');
+      }
+    } finally {
+      setSavingCnpj(false);
+    }
+  };
 
   const fetchClient = useCallback(async () => {
     const clientRes = await fetch(`/api/clients/${id}`);
@@ -50,6 +85,7 @@ export default function ClientPage({ params }) {
       const data = await clientRes.json();
       setClient(data);
       setEmpresaInput(data.gestorEmpresa ?? '');
+      setCnpjInput(data.businessTaxId ?? '');
       const portalRes = await fetch(`/api/portal/${data.portalToken}`);
       if (portalRes.ok) {
         const portalData = await portalRes.json();
@@ -273,6 +309,37 @@ export default function ClientPage({ params }) {
                 >
                   <span className={client.gestorEmpresa ? 'text-blue-600 font-medium' : 'text-gray-400'}>
                     {client.gestorEmpresa ? `gestor: ${client.gestorEmpresa}` : 'Vincular ao Gestor...'}
+                  </span>
+                  <Pencil className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity" />
+                </button>
+              )}
+            </div>
+            <div className="flex items-center gap-1.5 mt-0.5">
+              {editingCnpj ? (
+                <>
+                  <input
+                    autoFocus
+                    type="text"
+                    value={formatCnpj(cnpjInput)}
+                    onChange={(e) => setCnpjInput(e.target.value)}
+                    placeholder="00.000.000/0000-00"
+                    className="text-xs border border-blue-400 rounded px-2 py-0.5 focus:outline-none focus:ring-1 focus:ring-blue-500 w-40"
+                  />
+                  <button onClick={saveCnpj} disabled={savingCnpj} className="text-green-600 hover:text-green-700 p-0.5">
+                    <Check className="w-3.5 h-3.5" />
+                  </button>
+                  <button onClick={() => setEditingCnpj(false)} className="text-gray-400 hover:text-gray-600 p-0.5">
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </>
+              ) : (
+                <button
+                  onClick={() => { setCnpjInput(client.businessTaxId ?? ''); setEditingCnpj(true); }}
+                  className="flex items-center gap-1 text-xs text-gray-400 hover:text-blue-600 transition-colors group"
+                  title="CNPJ usado para atualizar conexões PJ"
+                >
+                  <span className={client.businessTaxId ? 'text-gray-600' : 'text-red-500'}>
+                    {client.businessTaxId ? `CNPJ: ${formatCnpj(client.businessTaxId)}` : 'Adicionar CNPJ...'}
                   </span>
                   <Pencil className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity" />
                 </button>
