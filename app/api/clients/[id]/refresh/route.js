@@ -24,9 +24,9 @@ const CONSENT_PRODUCT_MAP = {
 };
 
 function mapConsentProducts(consentProducts) {
-  if (!Array.isArray(consentProducts) || consentProducts.length === 0) return ['ACCOUNTS_ALL'];
-  // Envia os produtos exatamente como a Klavi os retorna no consentimento.
-  return consentProducts.map(p => String(p).toUpperCase());
+  // Usa 'all' para o endpoint user-data, que aceita esse valor e inclui
+  // todos os produtos ativados no onboarding da Klavi.
+  return ['all'];
 }
 
 export async function POST(request, { params }) {
