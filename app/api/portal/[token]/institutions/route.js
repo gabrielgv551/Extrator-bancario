@@ -32,8 +32,12 @@ export async function GET(_, { params }) {
     });
   } catch (error) {
     console.error('[portal institutions] erro:', error);
+    console.error('[portal institutions] stack:', error.stack);
+    console.error('[portal institutions] status:', error.status, 'code:', error.code, 'body:', JSON.stringify(error.body));
     return NextResponse.json({
       error: error.message,
+      stack: error.stack,
+      status: error.status,
       code: error.code,
       body: error.body,
       baseUrl: process.env.KLAVI_API_BASE,
