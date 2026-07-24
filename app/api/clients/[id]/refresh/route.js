@@ -223,11 +223,11 @@ export async function POST(request, { params }) {
       }
 
       try {
-        // Primeira tentativa: apenas taxId + institutionCode + products.
-        // A Klavi resolve o consentimento ativo automaticamente.
         const requestBody = {
           businessTaxId: itemBusinessTaxId,
           institutionCode: item.institutionCode,
+          linkId: activeLinkId,
+          consentIds: [activeConsentId],
           products: activeProducts,
           productsCallbackUrl: process.env.KLAVI_WEBHOOK_URL || null,
         };
