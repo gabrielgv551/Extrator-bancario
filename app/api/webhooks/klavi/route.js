@@ -15,6 +15,13 @@ function isAuthorized(request) {
   const secret = process.env.KLAVI_WEBHOOK_SECRET || process.env.CRON_SECRET;
   if (!secret) return false;
   const authHeader = request.headers.get('authorization') || '';
+  if (!authHeader) {
+    // A Klavi pode enviar eventos sem header de autenticação (eventos de produto),
+    // enquanto o teste de conectividade usa Authorization. Permitimos se não houver header,
+    // mas validamos quando houver.
+    console.warn('[klavi webhook] requisição sem header Authorization; permitindo evento');
+    return true;
+  }
   return authHeader === `Bearer ${secret}`;
 }
 
