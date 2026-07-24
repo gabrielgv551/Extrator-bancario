@@ -24,9 +24,18 @@ const CONSENT_PRODUCT_MAP = {
 };
 
 function mapConsentProducts(consentProducts) {
-  // Usa 'all' para o endpoint user-data, que aceita esse valor e inclui
-  // todos os produtos ativados no onboarding da Klavi.
-  return ['all'];
+  // Os produtos PJ são institution-level. Usamos a lista de produtos PJ
+  // ativados no onboarding. Se o consentimento trouxer produtos, mapeamos
+  // para os nomes institution-level.
+  if (!Array.isArray(consentProducts) || consentProducts.length === 0) return ['pj_checking_account'];
+  const mapped = new Set();
+  for (const p of consentProducts) {
+    const key = String(p).toUpperCase();
+    if (CONSENT_PRODUCT_MAP[key]) {
+      CONSENT_PRODUCT_MAP[key].forEach(m => mapped.add(m));
+    }
+  }
+  return mapped.size > 0 ? [...mapped] : ['pj_checking_account'];
 }
 
 export async function POST(request, { params }) {
