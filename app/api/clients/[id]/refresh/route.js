@@ -37,14 +37,16 @@ export async function POST(request, { params }) {
       }
 
       try {
-        await requestBusinessInstitutionData({
+        const requestBody = {
           businessTaxId: item.businessTaxId,
           institutionCode: item.institutionCode,
           linkId: item.klaviLinkId,
           consentIds: item.klaviConsentId ? [item.klaviConsentId] : undefined,
           products: DEFAULT_PRODUCTS,
           productsCallbackUrl: process.env.KLAVI_WEBHOOK_URL || null,
-        });
+        };
+        console.log('[refresh] solicitando dados Klavi:', JSON.stringify(requestBody));
+        await requestBusinessInstitutionData(requestBody);
 
         await updateItemStatus(item.id, { status: 'UPDATING' });
 
@@ -56,11 +58,16 @@ export async function POST(request, { params }) {
           message: 'Solicitação de relatório enviada. Dados chegarão via webhook.',
         });
       } catch (err) {
+        console.error('[refresh] erro ao solicitar dados:', err);
+        console.error('[refresh] body do erro:', err.body, 'status:', err.status, 'code:', err.code);
         results.push({
           itemId: item.id,
           bank: item.institutionName,
           success: false,
           reason: err.message,
+          klaviStatus: err.status,
+          klaviCode: err.code,
+          klaviBody: err.body,
         });
       }
     }
