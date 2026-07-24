@@ -12,8 +12,11 @@ export async function GET(_, { params }) {
   try {
     // Criamos um link temporário apenas para listar instituições (sem CNPJ obrigatório neste momento).
     const redirectUrl = `${process.env.KLAVI_WEBHOOK_URL || ''}`; // não usado aqui
+    console.log('[portal institutions] criando link em', process.env.KLAVI_API_BASE);
     const link = await createLink({ redirectUrl });
+    console.log('[portal institutions] link criado', link?.linkId);
     const institutions = await getInstitutions(link.linkToken);
+    console.log('[portal institutions] instituições', institutions?.length);
 
     return NextResponse.json({
       linkId: link.linkId,
@@ -29,6 +32,11 @@ export async function GET(_, { params }) {
     });
   } catch (error) {
     console.error('[portal institutions] erro:', error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({
+      error: error.message,
+      code: error.code,
+      body: error.body,
+      baseUrl: process.env.KLAVI_API_BASE,
+    }, { status: 500 });
   }
 }
