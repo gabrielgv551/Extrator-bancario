@@ -132,7 +132,7 @@ export async function POST(request, { params }) {
               await updateItemStatus(item.id, updates);
               console.log('[refresh] item=%s atualizado com %j', item.id, updates);
             }
-            return { consentId, linkId, products };
+            return { consentId, linkId, products, rawConsent: chosen };
           }
         }
       } catch (err) {
@@ -297,7 +297,10 @@ export async function POST(request, { params }) {
                     requestBody: {
                       businessTaxId: itemBusinessTaxId,
                       institutionCode: item.institutionCode,
+                      linkId: activeLinkId,
+                      consentIds: [activeConsentId],
                       products: activeProducts,
+                      productsCallbackUrl: process.env.KLAVI_WEBHOOK_URL || null,
                     },
                   },
                   pfRequestBody: {
@@ -306,7 +309,9 @@ export async function POST(request, { params }) {
                     linkId: activeLinkId,
                     consentIds: [activeConsentId],
                     products: activeProducts,
+                    productsCallbackUrl: process.env.KLAVI_WEBHOOK_URL || null,
                   },
+                  rawConsent: activeConsent.rawConsent || null,
                 },
               });
               continue;
@@ -333,7 +338,9 @@ export async function POST(request, { params }) {
               linkId: activeLinkId,
               consentIds: [activeConsentId],
               products: activeProducts,
+              productsCallbackUrl: process.env.KLAVI_WEBHOOK_URL || null,
             },
+            rawConsent: activeConsent.rawConsent || null,
           },
         });
       }

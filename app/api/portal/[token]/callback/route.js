@@ -5,16 +5,21 @@ import { v4 as uuidv4 } from 'uuid';
 
 export const dynamic = 'force-dynamic';
 
+// Nomes exatos dos produtos institution-level PJ na Klavi.
+// Ver: https://docs.klavi.ai/connect/overview
 const DEFAULT_PRODUCTS = [
   'pj_checking_account',
   'pj_savings_account',
   'pj_credit_card',
   'pj_loans',
-  'pj_financings',
-  'pj_investments_bank_fixed_incomes',
-  'pj_investments_credit_fixed_incomes',
-  'pj_investments_variable_incomes',
-  'pj_investments_funds',
+  'pj_financing',
+  'pj_unarranged_account_overdraft',
+  'pj_invoice_financing',
+  'pj_bank_fixed_incomes',
+  'pj_credit_fixed_incomes',
+  'pj_variable_incomes',
+  'pj_treasure_titles',
+  'pj_funds',
 ];
 
 export async function GET(request, { params }) {
