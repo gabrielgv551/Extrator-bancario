@@ -66,37 +66,45 @@ export async function POST(request, { params }) {
 
     async function resolveActiveConsent(item) {
       if (!item.klaviLinkId && !item.klaviConsentId) return null;
+      const filters = [
+        { linkId: item.klaviLinkId || undefined, businessTaxId: item.businessTaxId || clientBusinessTaxId || undefined, personalTaxId: item.personalTaxId || undefined },
+        { businessTaxId: item.businessTaxId || clientBusinessTaxId || undefined, personalTaxId: item.personalTaxId || undefined },
+      ];
       try {
-        const list = await getConsentList({
-          linkId: item.klaviLinkId || undefined,
-          businessTaxId: item.businessTaxId || clientBusinessTaxId || undefined,
-          personalTaxId: item.personalTaxId || undefined,
-        });
-        const consents = Array.isArray(list) ? list : (list?.consents || []);
-        // Consentimentos autorizados para a mesma instituição, do mais recente ao mais antigo.
-        const authorised = consents
-          .filter(c =>
-            String(c.institutionCode).toLowerCase() === String(item.institutionCode).toLowerCase() &&
-            ['authorised', 'authorized'].includes(String(c.status).toLowerCase())
-          )
-          .sort((a, b) => {
-            const da = a.updatedAt || a.createdAt || a.consentId;
-            const db = b.updatedAt || b.createdAt || b.consentId;
-            return String(db).localeCompare(String(da));
-          });
-        if (authorised.length > 0) {
-          const chosen = authorised[0];
-          const consentId = chosen.consentId || chosen.consentid;
-          if (consentId && consentId !== item.klaviConsentId) {
-            console.log('[refresh] consentimento autorizado atualizado para item=%s: %s', item.id, consentId);
-            await updateItemStatus(item.id, { klaviConsentId: consentId });
+        for (const params of filters) {
+          const list = await getConsentList(params);
+          const consents = Array.isArray(list) ? list : (list?.consents || []);
+          console.log('[refresh] consentimentos encontrados para item=%s via %j: count=%d', item.id, params, consents.length);
+          // Consentimentos autorizados para a mesma instituição, do mais recente ao mais antigo.
+          const authorised = consents
+            .filter(c =>
+              String(c.institutionCode).toLowerCase() === String(item.institutionCode).toLowerCase() &&
+              ['authorised', 'authorized'].includes(String(c.status).toLowerCase())
+            )
+            .sort((a, b) => {
+              const da = a.updatedAt || a.createdAt || a.consentId;
+              const db = b.updatedAt || b.createdAt || b.consentId;
+              return String(db).localeCompare(String(da));
+            });
+          if (authorised.length > 0) {
+            const chosen = authorised[0];
+            const consentId = chosen.consentId || chosen.consentid;
+            const linkId = chosen.linkId || chosen.linkid || item.klaviLinkId;
+            console.log('[refresh] consentimento autorizado escolhido para item=%s: consentId=%s linkId=%s', item.id, consentId, linkId);
+            const updates = {};
+            if (consentId && consentId !== item.klaviConsentId) updates.klaviConsentId = consentId;
+            if (linkId && linkId !== item.klaviLinkId) updates.klaviLinkId = linkId;
+            if (Object.keys(updates).length > 0) {
+              await updateItemStatus(item.id, updates);
+              console.log('[refresh] item=%s atualizado com %j', item.id, updates);
+            }
+            return { consentId, linkId };
           }
-          return consentId;
         }
       } catch (err) {
         console.warn('[refresh] falha ao buscar consentimentos ativos:', err.message);
       }
-      return item.klaviConsentId || null;
+      return { consentId: item.klaviConsentId || null, linkId: item.klaviLinkId || null };
     }
 
     for (const item of klaviItems) {
@@ -112,7 +120,9 @@ export async function POST(request, { params }) {
         continue;
       }
 
-      const activeConsentId = await resolveActiveConsent(item);
+      const activeConsent = await resolveActiveConsent(item);
+      const activeConsentId = activeConsent.consentId;
+      const activeLinkId = activeConsent.linkId;
 
       if (isPF) {
         const personalTaxId = item.personalTaxId || await resolvePersonalTaxId(item);
@@ -138,7 +148,7 @@ export async function POST(request, { params }) {
           const pfRequestBody = {
             personalTaxId,
             institutionCode: item.institutionCode,
-            linkId: item.klaviLinkId,
+            linkId: activeLinkId,
             consentIds: [activeConsentId],
             products: DEFAULT_PRODUCTS,
             productsCallbackUrl: process.env.KLAVI_WEBHOOK_URL || null,
@@ -182,7 +192,7 @@ export async function POST(request, { params }) {
         const requestBody = {
           businessTaxId: itemBusinessTaxId,
           institutionCode: item.institutionCode,
-          linkId: item.klaviLinkId,
+          linkId: activeLinkId,
           consentIds: [activeConsentId],
           products: DEFAULT_PRODUCTS,
           productsCallbackUrl: process.env.KLAVI_WEBHOOK_URL || null,
@@ -213,7 +223,7 @@ export async function POST(request, { params }) {
               const pfRequestBody = {
                 personalTaxId: personalTaxId,
                 institutionCode: item.institutionCode,
-                linkId: item.klaviLinkId,
+                linkId: activeLinkId,
                 consentIds: [activeConsentId],
                 products: DEFAULT_PRODUCTS,
                 productsCallbackUrl: process.env.KLAVI_WEBHOOK_URL || null,
