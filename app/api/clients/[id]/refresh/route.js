@@ -89,11 +89,12 @@ export async function POST(request, { params }) {
 
         // Fallback para PF: MEI/contas pessoais podem retornar 4002 no endpoint business.
         const isInvalidProduct = err.status === 416 && err.body?.statusCode === 4002;
+        console.log('[refresh] avaliando fallback:', { isInvalidProduct, status: err.status, statusCode: err.body?.statusCode, hasPersonal: !!item.personalTaxId });
         if (isInvalidProduct) {
           const personalTaxId = await resolvePersonalTaxId(item);
           if (personalTaxId) {
             const pfRequestBody = {
-              personalTaxId: item.personalTaxId,
+              personalTaxId: personalTaxId,
               institutionCode: item.institutionCode,
               linkId: item.klaviLinkId,
               consentIds: item.klaviConsentId ? [item.klaviConsentId] : undefined,
