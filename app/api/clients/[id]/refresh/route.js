@@ -8,19 +8,20 @@ export const maxDuration = 60;
 const DEFAULT_PRODUCTS = ['pj_checking_account'];
 
 // Mapeia produtos retornados pelo consentimento da Klavi (nomenclatura Open Finance)
-// para os nomes aceitos pelo endpoint /business/institution-data.
+// para os nomes EXATOS aceitos pelo endpoint /business/institution-data.
+// Ver: https://docs.klavi.ai/connect/overview
 const CONSENT_PRODUCT_MAP = {
   'ACCOUNTS_ALL': ['pj_checking_account', 'pj_savings_account'],
   'CREDIT_CARDS_ALL': ['pj_credit_card'],
   'CREDIT_OPERATIONS_LOANS': ['pj_loans'],
-  'CREDIT_OPERATIONS_FINANCINGS': ['pj_financings'],
-  'CREDIT_OPERATIONS_UNARRANGED_ACCOUNTS_OVERDRAFT': ['pj_unarranged_accounts_overdraft'],
-  'CREDIT_OPERATIONS_INVOICE_FINANCINGS': ['pj_invoice_financings'],
-  'INVESTMENTS_BANK_FIXED_INCOMES': ['pj_investments_bank_fixed_incomes'],
-  'INVESTMENTS_CREDIT_FIXED_INCOMES': ['pj_investments_credit_fixed_incomes'],
-  'INVESTMENTS_VARIABLE_INCOMES': ['pj_investments_variable_incomes'],
-  'INVESTMENTS_FUNDS': ['pj_investments_funds'],
-  'INVESTMENTS_TREASURE_TITLES': ['pj_investments_treasure_titles'],
+  'CREDIT_OPERATIONS_FINANCINGS': ['pj_financing'],
+  'CREDIT_OPERATIONS_UNARRANGED_ACCOUNTS_OVERDRAFT': ['pj_unarranged_account_overdraft'],
+  'CREDIT_OPERATIONS_INVOICE_FINANCINGS': ['pj_invoice_financing'],
+  'INVESTMENTS_BANK_FIXED_INCOMES': ['pj_bank_fixed_incomes'],
+  'INVESTMENTS_CREDIT_FIXED_INCOMES': ['pj_credit_fixed_incomes'],
+  'INVESTMENTS_VARIABLE_INCOMES': ['pj_variable_incomes'],
+  'INVESTMENTS_FUNDS': ['pj_funds'],
+  'INVESTMENTS_TREASURE_TITLES': ['pj_treasure_titles'],
 };
 
 function mapConsentProducts(consentProducts) {
