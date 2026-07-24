@@ -635,7 +635,9 @@ export default function ClientPage({ params }) {
                         <th className="px-4 py-3 font-semibold text-gray-600">Tipo</th>
                         <th className="px-4 py-3 font-semibold text-gray-600 text-right whitespace-nowrap">Valor</th>
                         <th className="px-4 py-3 font-semibold text-gray-600 text-right whitespace-nowrap">Saldo</th>
-                        <th className="px-4 py-3 font-semibold text-gray-600">Categoria</th>
+                        <th className="px-4 py-3 font-semibold text-gray-600">Categoria L1</th>
+                        <th className="px-4 py-3 font-semibold text-gray-600">Categoria L2</th>
+                        <th className="px-4 py-3 font-semibold text-gray-600">Categoria L3</th>
                         <th className="px-4 py-3 font-semibold text-gray-600">Conta</th>
                         <th className="px-4 py-3 font-semibold text-gray-600 whitespace-nowrap">Agência/Número</th>
                       </tr>
@@ -679,7 +681,9 @@ export default function ClientPage({ params }) {
                           <td className="px-4 py-2.5 text-right text-gray-500 whitespace-nowrap text-xs">
                             {tx.balance != null ? formatCurrency(tx.balance) : '—'}
                           </td>
-                          <td className="px-4 py-2.5 text-gray-500 text-xs">{tx.category || '—'}</td>
+                          <td className="px-4 py-2.5 text-gray-500 text-xs">{tx.categoryL1 || '—'}</td>
+                          <td className="px-4 py-2.5 text-gray-500 text-xs">{tx.categoryL2 || '—'}</td>
+                          <td className="px-4 py-2.5 text-gray-500 text-xs">{tx.categoryL3 || '—'}</td>
                           <td className="px-4 py-2.5 text-gray-500 text-xs whitespace-nowrap">
                             {tx.accountName}
                           </td>

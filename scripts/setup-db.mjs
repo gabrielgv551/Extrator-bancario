@@ -181,6 +181,12 @@ async function setup() {
   await db.query(`ALTER TABLE transactions ADD COLUMN IF NOT EXISTS account_number VARCHAR(100)`);
   await db.query(`ALTER TABLE credit_transactions ADD COLUMN IF NOT EXISTS account_number VARCHAR(100)`);
   await db.query(`ALTER TABLE credit_transactions ADD COLUMN IF NOT EXISTS counterparty_document VARCHAR(255)`);
+  await db.query(`ALTER TABLE transactions ADD COLUMN IF NOT EXISTS category_l1 VARCHAR(255)`);
+  await db.query(`ALTER TABLE transactions ADD COLUMN IF NOT EXISTS category_l2 VARCHAR(255)`);
+  await db.query(`ALTER TABLE transactions ADD COLUMN IF NOT EXISTS category_l3 VARCHAR(255)`);
+  await db.query(`ALTER TABLE credit_transactions ADD COLUMN IF NOT EXISTS category_l1 VARCHAR(255)`);
+  await db.query(`ALTER TABLE credit_transactions ADD COLUMN IF NOT EXISTS category_l2 VARCHAR(255)`);
+  await db.query(`ALTER TABLE credit_transactions ADD COLUMN IF NOT EXISTS category_l3 VARCHAR(255)`);
   await db.query(`ALTER TABLE items ADD COLUMN IF NOT EXISTS account_numbers TEXT`);
   await db.query(`ALTER TABLE items ADD COLUMN IF NOT EXISTS status VARCHAR(50)`);
   await db.query(`ALTER TABLE items ADD COLUMN IF NOT EXISTS execution_status VARCHAR(100)`);
@@ -250,7 +256,7 @@ async function setup() {
     CREATE VIEW all_transactions AS
     SELECT
       t.id, t.client_id, t.pluggy_item_id, t.date, t.description, t.type,
-      t.amount, t.balance, t.category,
+      t.amount, t.balance, t.category, t.category_l1, t.category_l2, t.category_l3,
       t.account_name, t.account_number, t.account_type, t.institution_name,
       t.counterparty_name AS razao_social, t.counterparty_document,
       t.status, t.date_transacted, t.synced_at, 'bank' AS source
@@ -258,7 +264,7 @@ async function setup() {
     UNION ALL
     SELECT
       ct.id, ct.client_id, ct.pluggy_item_id, ct.date, ct.description, ct.type,
-      ct.amount, ct.balance, ct.category,
+      ct.amount, ct.balance, ct.category, ct.category_l1, ct.category_l2, ct.category_l3,
       ct.account_name, ct.account_number, ct.account_type, ct.institution_name,
       ct.counterparty_name AS razao_social, ct.counterparty_document,
       ct.status, ct.date_transacted, ct.synced_at, 'credit' AS source

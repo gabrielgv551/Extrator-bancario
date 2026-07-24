@@ -27,7 +27,9 @@ export async function GET(request, { params }) {
     Tipo: tx.type === 'CREDIT' ? 'Entrada' : 'Saída',
     'Valor (R$)': Number(tx.amount),
     Saldo: tx.balance != null ? Number(tx.balance) : '',
-    Categoria: tx.category ?? '',
+    'Categoria L1': tx.categoryL1 ?? '',
+    'Categoria L2': tx.categoryL2 ?? '',
+    'Categoria L3': tx.categoryL3 ?? '',
     Conta: tx.accountName ?? '',
     Status: tx.status ?? '',
   }));

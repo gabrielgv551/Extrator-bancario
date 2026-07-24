@@ -61,6 +61,18 @@ async function persistReport(localItem, payload) {
     return;
   }
 
+  // Debug: mostra estrutura bruta das transações para descobrir nomes de campos de categoria.
+  try {
+    const firstChecking = report?.checkingAccounts?.[0]?.transactionDetails?.[0];
+    const firstCredit = report?.creditCardAccounts?.[0]?.transactionDetails?.[0];
+    console.log('[klavi webhook] sample checking tx keys:', firstChecking ? Object.keys(firstChecking) : 'n/a');
+    console.log('[klavi webhook] sample credit tx keys:', firstCredit ? Object.keys(firstCredit) : 'n/a');
+    if (firstChecking) console.log('[klavi webhook] sample checking tx:', JSON.stringify(firstChecking, null, 2).slice(0, 800));
+    if (firstCredit) console.log('[klavi webhook] sample credit tx:', JSON.stringify(firstCredit, null, 2).slice(0, 800));
+  } catch (e) {
+    console.error('[klavi webhook] erro no log de debug:', e.message);
+  }
+
   const institutionName = localItem?.institutionName || report?.checkingAccounts?.[0]?.brandName || report?.creditCardAccounts?.[0]?.brandName || 'Banco';
   const mapped = mapKlaviReportToLocal({ productName, report, institutionCode, institutionName });
 

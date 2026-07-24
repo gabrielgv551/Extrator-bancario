@@ -74,19 +74,24 @@ async function upsert(table, tx, clientId, itemId) {
   await pool.query(
     `INSERT INTO ${table}
        (id, client_id, pluggy_item_id, date, description, type, amount, balance, category,
+        category_l1, category_l2, category_l3,
         account_name, account_type, institution_name, counterparty_name, status, synced_at)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,NOW())
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,NOW())
      ON CONFLICT (id) DO UPDATE SET
        description       = EXCLUDED.description,
        amount            = EXCLUDED.amount,
        balance           = EXCLUDED.balance,
        category          = EXCLUDED.category,
+       category_l1       = EXCLUDED.category_l1,
+       category_l2       = EXCLUDED.category_l2,
+       category_l3       = EXCLUDED.category_l3,
        institution_name  = EXCLUDED.institution_name,
        counterparty_name = EXCLUDED.counterparty_name,
        status            = EXCLUDED.status,
        synced_at         = NOW()`,
     [tx.id, clientId, itemId, tx.date, tx.description ?? '', tx.type, tx.amount,
-     tx.balance ?? null, tx.category ?? null, tx.accountName ?? null, tx.accountType ?? null,
+     tx.balance ?? null, tx.category ?? null, tx.categoryL1 ?? null, tx.categoryL2 ?? null, tx.categoryL3 ?? null,
+     tx.accountName ?? null, tx.accountType ?? null,
      tx.institutionName ?? null, tx.counterpartyName ?? null, tx.status ?? null]
   );
 }

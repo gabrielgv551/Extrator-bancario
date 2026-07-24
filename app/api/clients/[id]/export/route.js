@@ -24,7 +24,7 @@ export async function GET(request, { params }) {
       return doc;
     };
 
-    const header = 'ID,Data,Data Transação,Descrição,Tipo,Valor (R$),Saldo,Categoria,Conta,Agência/Número,Tipo de Conta,Banco,Razão Social,CNPJ/CPF,Origem,Status\n';
+    const header = 'ID,Data,Data Transação,Descrição,Tipo,Valor (R$),Saldo,Categoria L1,Categoria L2,Categoria L3,Conta,Agência/Número,Tipo de Conta,Banco,Razão Social,CNPJ/CPF,Origem,Status\n';
     const rows = transactions
       .map((tx) =>
         [
@@ -35,7 +35,9 @@ export async function GET(request, { params }) {
           tx.type === 'CREDIT' ? 'Entrada' : 'Saída',
           tx.amount,
           tx.balance ?? '',
-          tx.category ?? '',
+          tx.categoryL1 ?? '',
+          tx.categoryL2 ?? '',
+          tx.categoryL3 ?? '',
           `"${(tx.accountName || '').replace(/"/g, '""')}"`,
           `"${(tx.accountNumber || '').replace(/"/g, '""')}"`,
           tx.accountType ?? '',
