@@ -24,15 +24,9 @@ const CONSENT_PRODUCT_MAP = {
 };
 
 function mapConsentProducts(consentProducts) {
-  if (!Array.isArray(consentProducts) || consentProducts.length === 0) return DEFAULT_PRODUCTS;
-  const mapped = new Set();
-  for (const p of consentProducts) {
-    const key = String(p).toUpperCase();
-    if (CONSENT_PRODUCT_MAP[key]) {
-      CONSENT_PRODUCT_MAP[key].forEach(m => mapped.add(m));
-    }
-  }
-  return mapped.size > 0 ? [...mapped] : DEFAULT_PRODUCTS;
+  if (!Array.isArray(consentProducts) || consentProducts.length === 0) return ['ACCOUNTS_ALL'];
+  // Envia os produtos exatamente como a Klavi os retorna no consentimento.
+  return consentProducts.map(p => String(p).toUpperCase());
 }
 
 export async function POST(request, { params }) {
