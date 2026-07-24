@@ -220,15 +220,15 @@ export async function POST(request, { params }) {
       }
 
       try {
+        // Primeira tentativa: apenas taxId + institutionCode + products.
+        // A Klavi resolve o consentimento ativo automaticamente.
         const requestBody = {
           businessTaxId: itemBusinessTaxId,
           institutionCode: item.institutionCode,
-          linkId: activeLinkId,
-          consentIds: [activeConsentId],
           products: activeProducts,
           productsCallbackUrl: process.env.KLAVI_WEBHOOK_URL || null,
         };
-        console.log('[refresh] solicitando dados Klavi PJ:', JSON.stringify(requestBody));
+        console.log('[refresh] solicitando dados Klavi PJ (sem link/consent):', JSON.stringify(requestBody));
         await requestBusinessInstitutionData(requestBody);
 
         await updateItemStatus(item.id, { status: 'UPDATING' });
