@@ -17,7 +17,36 @@ const DEFAULT_PRODUCTS = [
   'pj_investments_credit_fixed_incomes',
   'pj_investments_variable_incomes',
   'pj_investments_funds',
+  'pj_investments_treasure_titles',
 ];
+
+// Mapeia produtos retornados pelo consentimento da Klavi (nomenclatura Open Finance)
+// para os nomes aceitos pelo endpoint /business/user-data.
+const CONSENT_PRODUCT_MAP = {
+  'ACCOUNTS_ALL': ['pj_checking_account', 'pj_savings_account'],
+  'CREDIT_CARDS_ALL': ['pj_credit_card'],
+  'CREDIT_OPERATIONS_LOANS': ['pj_loans'],
+  'CREDIT_OPERATIONS_FINANCINGS': ['pj_financings'],
+  'CREDIT_OPERATIONS_UNARRANGED_ACCOUNTS_OVERDRAFT': ['pj_unarranged_accounts_overdraft'],
+  'CREDIT_OPERATIONS_INVOICE_FINANCINGS': ['pj_invoice_financings'],
+  'INVESTMENTS_BANK_FIXED_INCOMES': ['pj_investments_bank_fixed_incomes'],
+  'INVESTMENTS_CREDIT_FIXED_INCOMES': ['pj_investments_credit_fixed_incomes'],
+  'INVESTMENTS_VARIABLE_INCOMES': ['pj_investments_variable_incomes'],
+  'INVESTMENTS_FUNDS': ['pj_investments_funds'],
+  'INVESTMENTS_TREASURE_TITLES': ['pj_investments_treasure_titles'],
+};
+
+function mapConsentProducts(consentProducts) {
+  if (!Array.isArray(consentProducts) || consentProducts.length === 0) return DEFAULT_PRODUCTS;
+  const mapped = new Set();
+  for (const p of consentProducts) {
+    const key = String(p).toUpperCase();
+    if (CONSENT_PRODUCT_MAP[key]) {
+      CONSENT_PRODUCT_MAP[key].forEach(m => mapped.add(m));
+    }
+  }
+  return mapped.size > 0 ? [...mapped] : DEFAULT_PRODUCTS;
+}
 
 export async function POST(request, { params }) {
   const { id } = await params;
@@ -102,7 +131,9 @@ export async function POST(request, { params }) {
             const chosen = authorised[0];
             const consentId = chosen.consentId || chosen.consentid;
             const linkId = chosen.linkId || chosen.linkid || item.klaviLinkId;
-            console.log('[refresh] consentimento autorizado escolhido para item=%s: consentId=%s linkId=%s', item.id, consentId, linkId);
+            const consentProducts = chosen.products || chosen.product || chosen.scope || chosen.scopes;
+            const products = mapConsentProducts(consentProducts);
+            console.log('[refresh] consentimento autorizado escolhido para item=%s: consentId=%s linkId=%s products=%j rawProducts=%j', item.id, consentId, linkId, products, consentProducts);
             const updates = {};
             if (consentId && consentId !== item.klaviConsentId) updates.klaviConsentId = consentId;
             if (linkId && linkId !== item.klaviLinkId) updates.klaviLinkId = linkId;
@@ -110,7 +141,7 @@ export async function POST(request, { params }) {
               await updateItemStatus(item.id, updates);
               console.log('[refresh] item=%s atualizado com %j', item.id, updates);
             }
-            return { consentId, linkId };
+            return { consentId, linkId, products };
           }
         }
       } catch (err) {
@@ -135,6 +166,7 @@ export async function POST(request, { params }) {
       const activeConsent = await resolveActiveConsent(item);
       const activeConsentId = activeConsent.consentId;
       const activeLinkId = activeConsent.linkId;
+      const activeProducts = activeConsent.products || DEFAULT_PRODUCTS;
 
       if (isPF) {
         const personalTaxId = item.personalTaxId || await resolvePersonalTaxId(item);
@@ -162,7 +194,7 @@ export async function POST(request, { params }) {
             institutionCode: item.institutionCode,
             linkId: activeLinkId,
             consentIds: [activeConsentId],
-            products: DEFAULT_PRODUCTS,
+            products: activeProducts,
             productsCallbackUrl: process.env.KLAVI_WEBHOOK_URL || null,
           };
           console.log('[refresh] solicitando dados Klavi PF:', JSON.stringify(pfRequestBody));
@@ -206,7 +238,7 @@ export async function POST(request, { params }) {
           institutionCode: item.institutionCode,
           linkId: activeLinkId,
           consentIds: [activeConsentId],
-          products: DEFAULT_PRODUCTS,
+          products: activeProducts,
           productsCallbackUrl: process.env.KLAVI_WEBHOOK_URL || null,
         };
         console.log('[refresh] solicitando dados Klavi PJ:', JSON.stringify(requestBody));
@@ -237,7 +269,7 @@ export async function POST(request, { params }) {
                 institutionCode: item.institutionCode,
                 linkId: activeLinkId,
                 consentIds: [activeConsentId],
-                products: DEFAULT_PRODUCTS,
+                products: activeProducts,
                 productsCallbackUrl: process.env.KLAVI_WEBHOOK_URL || null,
               };
               console.log('[refresh] tentando fallback PF:', JSON.stringify(pfRequestBody));
@@ -273,6 +305,7 @@ export async function POST(request, { params }) {
                     institutionCode: item.institutionCode,
                     linkId: activeLinkId,
                     consentIds: [activeConsentId],
+                    products: activeProducts,
                   },
                 },
               });
@@ -299,6 +332,7 @@ export async function POST(request, { params }) {
               institutionCode: item.institutionCode,
               linkId: activeLinkId,
               consentIds: [activeConsentId],
+              products: activeProducts,
             },
           },
         });
