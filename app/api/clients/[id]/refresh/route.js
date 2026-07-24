@@ -11,7 +11,7 @@ const DEFAULT_PRODUCTS = ['pj_categorized_checking_l2'];
 // para os nomes EXATOS aceitos pelo endpoint /business/institution-data.
 // Ver: https://docs.klavi.ai/connect/overview
 const CONSENT_PRODUCT_MAP = {
-  'ACCOUNTS_ALL': ['pj_categorized_checking_l2', 'pj_checking_account', 'pj_savings_account'],
+  'ACCOUNTS_ALL': ['pj_categorized_checking_l2'],
   'CREDIT_CARDS_ALL': ['pj_credit_card'],
   'CREDIT_OPERATIONS_LOANS': ['pj_loans'],
   'CREDIT_OPERATIONS_FINANCINGS': ['pj_financing'],
@@ -25,10 +25,9 @@ const CONSENT_PRODUCT_MAP = {
 };
 
 function mapConsentProducts(consentProducts) {
-  // Os produtos PJ são institution-level. Usamos a lista de produtos PJ
-  // ativados no onboarding. Se o consentimento trouxer produtos, mapeamos
-  // para os nomes institution-level.
-  if (!Array.isArray(consentProducts) || consentProducts.length === 0) return ['pj_checking_account'];
+  // Queremos apenas o extrato bancário. Se o consentimento incluir ACCOUNTS_ALL,
+  // usamos o produto institution-level de extrato categorizado L2.
+  if (!Array.isArray(consentProducts) || consentProducts.length === 0) return DEFAULT_PRODUCTS;
   const mapped = new Set();
   for (const p of consentProducts) {
     const key = String(p).toUpperCase();
@@ -36,7 +35,7 @@ function mapConsentProducts(consentProducts) {
       CONSENT_PRODUCT_MAP[key].forEach(m => mapped.add(m));
     }
   }
-  return mapped.size > 0 ? [...mapped] : ['pj_checking_account'];
+  return mapped.size > 0 ? [...mapped] : DEFAULT_PRODUCTS;
 }
 
 export async function POST(request, { params }) {
