@@ -12,7 +12,7 @@ const LOCK_TTL_MINUTES = 30;
 
 // Produto institution-level PJ para extrato bancário.
 // Ver: https://docs.klavi.ai/connect/overview
-const DEFAULT_PRODUCTS = ['pj_categorized_checking_l2'];
+const DEFAULT_PRODUCTS = ['pj_categorized_checking_l3'];
 
 export async function GET(request) {
   const isVercelCron = request.headers.get('x-vercel-cron') === '1';

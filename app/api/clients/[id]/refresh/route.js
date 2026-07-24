@@ -5,14 +5,14 @@ import { requestBusinessInstitutionData, requestPersonalInstitutionData, getCons
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
 
-const DEFAULT_PRODUCTS = ['pj_categorized_checking_l2'];
+const DEFAULT_PRODUCTS = ['pj_categorized_checking_l3'];
 
 // Mapeia produtos retornados pelo consentimento da Klavi (nomenclatura Open Finance)
 // para os nomes EXATOS aceitos pelo endpoint /business/institution-data.
 // Ver: https://docs.klavi.ai/connect/overview
 const CONSENT_PRODUCT_MAP = {
-  'ACCOUNTS_ALL': ['pj_categorized_checking_l2'],
-  'CREDIT_CARDS_ALL': ['pj_credit_card'],
+  'ACCOUNTS_ALL': ['pj_categorized_checking_l3'],
+  'CREDIT_CARDS_ALL': ['pj_categorized_creditcard_l3'],
   'CREDIT_OPERATIONS_LOANS': ['pj_loans'],
   'CREDIT_OPERATIONS_FINANCINGS': ['pj_financing'],
   'CREDIT_OPERATIONS_UNARRANGED_ACCOUNTS_OVERDRAFT': ['pj_unarranged_account_overdraft'],

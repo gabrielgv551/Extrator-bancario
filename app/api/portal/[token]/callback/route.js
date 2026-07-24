@@ -7,7 +7,7 @@ export const dynamic = 'force-dynamic';
 
 // Nomes exatos dos produtos institution-level PJ na Klavi.
 // Ver: https://docs.klavi.ai/connect/overview
-const DEFAULT_PRODUCTS = ['pj_categorized_checking_l2'];
+const DEFAULT_PRODUCTS = ['pj_categorized_checking_l3'];
 
 export async function GET(request, { params }) {
   const { token } = await params;
