@@ -16,9 +16,11 @@ export default function PortalPage({ params }) {
   const [connectors, setConnectors] = useState([]);
   const [showConnectorSelector, setShowConnectorSelector] = useState(false);
   const [selectedConnector, setSelectedConnector] = useState(null);
+  const [selectedTaxType, setSelectedTaxType] = useState(null);
   const [cnpjInput, setCnpjInput] = useState('');
   const [cpfInput, setCpfInput] = useState('');
   const [showTaxIdsInput, setShowTaxIdsInput] = useState(false);
+  const [showTaxTypeSelector, setShowTaxTypeSelector] = useState(false);
   const [pendingConnector, setPendingConnector] = useState(null);
 
   const fetchData = async () => {
@@ -79,17 +81,28 @@ export default function PortalPage({ params }) {
   };
 
   const connectBank = () => {
-    if (!client?.businessTaxId) {
+    setSelectedTaxType(null);
+    setShowTaxTypeSelector(true);
+  };
+
+  const handleSelectTaxType = (type) => {
+    setSelectedTaxType(type);
+    setShowTaxTypeSelector(false);
+    if (type === 'pj') {
+      setCnpjInput(client?.businessTaxId ? formatCnpj(client.businessTaxId) : '');
+      setCpfInput('');
       setShowTaxIdsInput(true);
-      return;
+    } else {
+      setCnpjInput('');
+      setCpfInput('');
+      setShowTaxIdsInput(true);
     }
-    setShowConnectorSelector(true);
   };
 
   const handleConfirmTaxIds = () => {
     const rawCnpj = cnpjInput.replace(/\D/g, '');
     const rawCpf = cpfInput.replace(/\D/g, '');
-    if (rawCnpj.length !== 14) {
+    if (selectedTaxType === 'pj' && rawCnpj.length !== 14) {
       showMessage('CNPJ inválido. Digite 14 dígitos.', 'error');
       return;
     }
@@ -111,11 +124,14 @@ export default function PortalPage({ params }) {
     setSelectedConnector(connector);
     setShowConnectorSelector(false);
 
-    const businessTaxId = client?.businessTaxId || cnpjInput.replace(/\D/g, '');
-    const personalTaxId = cpfInput.replace(/\D/g, '');
+    const rawCnpj = cnpjInput.replace(/\D/g, '');
+    const rawCpf = cpfInput.replace(/\D/g, '');
+    const isPJ = selectedTaxType === 'pj';
+    const businessTaxId = isPJ ? (client?.businessTaxId || rawCnpj) : undefined;
+    const personalTaxId = rawCpf;
 
-    // Se faltar CNPJ/CPF, abre o modal e guarda o connector para continuar depois.
-    if (!businessTaxId || !personalTaxId) {
+    // Se faltar CPF (ou CNPJ no caso PJ), abre o modal e guarda o connector para continuar depois.
+    if (!personalTaxId || (isPJ && !businessTaxId)) {
       setPendingConnector(connector);
       setShowTaxIdsInput(true);
       setConnecting(false);
@@ -133,6 +149,7 @@ export default function PortalPage({ params }) {
           institutionCode: connector.institutionCode,
           businessTaxId,
           personalTaxId,
+          taxType: selectedTaxType,
         }),
       });
       const data = await res.json();
@@ -150,6 +167,7 @@ export default function PortalPage({ params }) {
           institutionLogo: connector.avatar || null,
           businessTaxId,
           personalTaxId,
+          taxType: selectedTaxType,
           status: 'WAITING_DATA',
         }),
       });
@@ -342,21 +360,58 @@ export default function PortalPage({ params }) {
           Seus dados são protegidos pelo Open Finance · Provedor Klavi
         </p>
 
+        {/* Modal de escolha PF/PJ */}
+        {showTaxTypeSelector && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div className="absolute inset-0 bg-black/40" onClick={() => setShowTaxTypeSelector(false)} />
+            <div className="relative bg-white rounded-2xl w-full max-w-md p-5 shadow-2xl">
+              <h3 className="text-base font-bold text-gray-900 mb-2">Tipo de conta</h3>
+              <p className="text-sm text-gray-500 mb-4">A conta bancária é de pessoa física ou empresa?</p>
+              <div className="grid grid-cols-2 gap-3">
+                <button
+                  onClick={() => handleSelectTaxType('pf')}
+                  className="flex flex-col items-center gap-2 p-4 rounded-xl border border-gray-200 hover:border-blue-400 hover:bg-blue-50 transition-colors"
+                >
+                  <span className="text-sm font-semibold text-gray-900">Pessoa Física</span>
+                  <span className="text-xs text-gray-500">CPF</span>
+                </button>
+                <button
+                  onClick={() => handleSelectTaxType('pj')}
+                  className="flex flex-col items-center gap-2 p-4 rounded-xl border border-gray-200 hover:border-blue-400 hover:bg-blue-50 transition-colors"
+                >
+                  <span className="text-sm font-semibold text-gray-900">Empresa / PJ</span>
+                  <span className="text-xs text-gray-500">CNPJ + CPF</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Modal de CNPJ/CPF */}
         {showTaxIdsInput && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
             <div className="absolute inset-0 bg-black/40" onClick={() => setShowTaxIdsInput(false)} />
             <div className="relative bg-white rounded-2xl w-full max-w-md p-5 shadow-2xl">
-              <h3 className="text-base font-bold text-gray-900 mb-2">Informe CNPJ e CPF</h3>
-              <p className="text-sm text-gray-500 mb-4">São necessários para abrir o consentimento com o banco.</p>
-              <label className="block text-xs font-medium text-gray-700 mb-1">CNPJ</label>
-              <input
-                type="text"
-                value={formatCnpj(cnpjInput)}
-                onChange={(e) => setCnpjInput(e.target.value)}
-                placeholder="00.000.000/0000-00"
-                className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 mb-3"
-              />
+              <h3 className="text-base font-bold text-gray-900 mb-2">
+                {selectedTaxType === 'pf' ? 'Informe o CPF' : 'Informe CNPJ e CPF'}
+              </h3>
+              <p className="text-sm text-gray-500 mb-4">
+                {selectedTaxType === 'pf'
+                  ? 'CPF do titular da conta bancária.'
+                  : 'São necessários para abrir o consentimento com o banco.'}
+              </p>
+              {selectedTaxType === 'pj' && (
+                <>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">CNPJ</label>
+                  <input
+                    type="text"
+                    value={formatCnpj(cnpjInput)}
+                    onChange={(e) => setCnpjInput(e.target.value)}
+                    placeholder="00.000.000/0000-00"
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 mb-3"
+                  />
+                </>
+              )}
               <label className="block text-xs font-medium text-gray-700 mb-1">CPF</label>
               <input
                 type="text"

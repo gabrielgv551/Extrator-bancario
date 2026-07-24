@@ -52,13 +52,59 @@ export async function POST(request, { params }) {
     }
 
     for (const item of klaviItems) {
-      if (!item.klaviLinkId || !item.businessTaxId || !item.institutionCode) {
+      const isPF = item.taxType === 'pf';
+      if (!item.klaviLinkId || !item.institutionCode || (!isPF && !item.businessTaxId)) {
         results.push({
           itemId: item.id,
           bank: item.institutionName,
           success: false,
-          reason: 'Item Klavi incompleto (link, cnpj ou instituição faltando)',
+          reason: 'Item Klavi incompleto (link, cnpj/cpf ou instituição faltando)',
         });
+        continue;
+      }
+
+      if (isPF) {
+        const personalTaxId = item.personalTaxId || await resolvePersonalTaxId(item);
+        if (!personalTaxId) {
+          results.push({
+            itemId: item.id,
+            bank: item.institutionName,
+            success: false,
+            reason: 'CPF não encontrado para conta PF. Reconecte pelo portal informando o CPF.',
+          });
+          continue;
+        }
+        try {
+          const pfRequestBody = {
+            personalTaxId,
+            institutionCode: item.institutionCode,
+            linkId: item.klaviLinkId,
+            consentIds: item.klaviConsentId ? [item.klaviConsentId] : undefined,
+            products: DEFAULT_PRODUCTS,
+            productsCallbackUrl: process.env.KLAVI_WEBHOOK_URL || null,
+          };
+          console.log('[refresh] solicitando dados Klavi PF:', JSON.stringify(pfRequestBody));
+          await requestPersonalInstitutionData(pfRequestBody);
+          await updateItemStatus(item.id, { status: 'UPDATING' });
+          results.push({
+            itemId: item.id,
+            bank: item.institutionName,
+            success: true,
+            status: 'REQUESTED_PF',
+            message: 'Solicitação de relatório PF enviada. Dados chegarão via webhook.',
+          });
+        } catch (err) {
+          console.error('[refresh] erro ao solicitar dados PF:', err);
+          results.push({
+            itemId: item.id,
+            bank: item.institutionName,
+            success: false,
+            reason: err.message,
+            klaviStatus: err.status,
+            klaviCode: err.code,
+            klaviBody: err.body,
+          });
+        }
         continue;
       }
 

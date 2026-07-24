@@ -202,6 +202,7 @@ async function setup() {
   await db.query(`ALTER TABLE items ADD COLUMN IF NOT EXISTS klavi_consent_id VARCHAR(255)`);
   await db.query(`ALTER TABLE items ADD COLUMN IF NOT EXISTS business_tax_id VARCHAR(14)`);
   await db.query(`ALTER TABLE items ADD COLUMN IF NOT EXISTS personal_tax_id VARCHAR(11)`);
+  await db.query(`ALTER TABLE items ADD COLUMN IF NOT EXISTS tax_type VARCHAR(10)`);
   await db.query(`ALTER TABLE items ADD COLUMN IF NOT EXISTS institution_code VARCHAR(10)`);
 
   await db.query(`CREATE INDEX IF NOT EXISTS idx_items_provider ON items(provider)`);

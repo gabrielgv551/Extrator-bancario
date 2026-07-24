@@ -35,6 +35,7 @@ export async function POST(request, { params }) {
         accountNumbers: body.accountNumbers || null,
         businessTaxId: body.businessTaxId || null,
         personalTaxId: body.personalTaxId || null,
+        taxType: body.taxType || null,
         status: body.status || 'WAITING_DATA',
       });
       return NextResponse.json(item, { status: 201 });

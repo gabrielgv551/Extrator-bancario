@@ -11,12 +11,13 @@ export async function POST(request, { params }) {
 
   try {
     const body = await request.json().catch(() => ({}));
-    const { institutionCode, businessTaxId, personalTaxId, linkId: existingLinkId, linkToken: existingLinkToken } = body;
+    const { institutionCode, businessTaxId, personalTaxId, taxType, linkId: existingLinkId, linkToken: existingLinkToken } = body;
+    const isPF = taxType === 'pf';
     if (!institutionCode) {
       return NextResponse.json({ error: 'institutionCode obrigatório' }, { status: 400 });
     }
-    if (!businessTaxId) {
-      return NextResponse.json({ error: 'businessTaxId (CNPJ) obrigatório' }, { status: 400 });
+    if (!isPF && !businessTaxId) {
+      return NextResponse.json({ error: 'businessTaxId (CNPJ) obrigatório para PJ' }, { status: 400 });
     }
     if (!personalTaxId) {
       return NextResponse.json({ error: 'personalTaxId (CPF) obrigatório' }, { status: 400 });
@@ -27,11 +28,13 @@ export async function POST(request, { params }) {
       : `https://${request.headers.get('host')}`;
     const redirectUrl = `${baseUrl}/portal/${token}/callback`;
 
-    // Verifica se já existe consentimento pendente para o mesmo CNPJ/CPF + instituição.
+    // Verifica se já existe consentimento pendente para o mesmo CPF/CNPJ + instituição.
     // Evita atingir o limite de consentimentos da Klavi criando um novo a cada clique.
     let existingConsents = [];
     try {
-      const listData = await getConsentList({ personalTaxId, businessTaxId });
+      const listParams = { personalTaxId };
+      if (!isPF && businessTaxId) listParams.businessTaxId = businessTaxId;
+      const listData = await getConsentList(listParams);
       console.log('[portal consent] lista de consentimentos:', JSON.stringify(listData).slice(0, 2000));
       existingConsents = Array.isArray(listData) ? listData : (listData?.consents || []);
     } catch (err) {
@@ -60,19 +63,23 @@ export async function POST(request, { params }) {
       let linkId = existingLinkId;
       let linkToken = existingLinkToken;
       if (!linkId || !linkToken) {
-        const link = await createLink({ personalTaxId, businessTaxId, redirectUrl, productsCallbackUrl });
+        const linkParams = { personalTaxId, redirectUrl, productsCallbackUrl };
+        if (!isPF && businessTaxId) linkParams.businessTaxId = businessTaxId;
+        const link = await createLink(linkParams);
         linkId = link.linkId;
         linkToken = link.linkToken;
       }
 
-      const consent = await createConsent({
+      const consentParams = {
         linkToken,
         personalTaxId,
-        businessTaxId,
         institutionCode,
         redirectUrl,
         productsCallbackUrl,
-      });
+      };
+      if (!isPF && businessTaxId) consentParams.businessTaxId = businessTaxId;
+
+      const consent = await createConsent(consentParams);
 
       return {
         linkId,
@@ -103,7 +110,9 @@ export async function POST(request, { params }) {
       // para liberar vaga. Se a API da Klavi não permitir revogar, informamos o usuário.
       let allConsents = [];
       try {
-        const listData = await getConsentList({ personalTaxId, businessTaxId });
+        const listParams = { personalTaxId };
+        if (!isPF && businessTaxId) listParams.businessTaxId = businessTaxId;
+        const listData = await getConsentList(listParams);
         allConsents = Array.isArray(listData) ? listData : (listData?.consents || []);
       } catch (err) {
         console.warn('[portal consent] falha ao listar consentimentos para limpeza:', err.message);
