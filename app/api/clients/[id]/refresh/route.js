@@ -286,7 +286,16 @@ export async function POST(request, { params }) {
                   activeLinkId,
                   itemLinkId: item.klaviLinkId,
                   itemConsentId: item.klaviConsentId,
-                  businessError: { status: err.status, statusCode: err.body?.statusCode, message: err.message },
+                  businessError: {
+                    status: err.status,
+                    statusCode: err.body?.statusCode,
+                    message: err.message,
+                    requestBody: {
+                      businessTaxId: itemBusinessTaxId,
+                      institutionCode: item.institutionCode,
+                      products: activeProducts,
+                    },
+                  },
                   pfRequestBody: {
                     personalTaxId,
                     institutionCode: item.institutionCode,
