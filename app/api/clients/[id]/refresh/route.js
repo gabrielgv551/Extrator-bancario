@@ -21,7 +21,7 @@ const DEFAULT_PRODUCTS = [
 ];
 
 // Mapeia produtos retornados pelo consentimento da Klavi (nomenclatura Open Finance)
-// para os nomes aceitos pelo endpoint /business/user-data.
+// para os nomes aceitos pelo endpoint /business/institution-data.
 const CONSENT_PRODUCT_MAP = {
   'ACCOUNTS_ALL': ['pj_checking_account', 'pj_savings_account'],
   'CREDIT_CARDS_ALL': ['pj_credit_card'],
