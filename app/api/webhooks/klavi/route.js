@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import {
   getItemByKlaviLinkId, getItemByKlaviConsentId, getClientById,
-  updateItemStatus, recordWebhookEvent, hasWebhookEvent,
+  updateItemStatus, recordWebhookEvent, hasWebhookEvent, recordKlaviWebhookDebug,
   upsertTransactionsBatch, upsertCreditTransactionsBatch,
   upsertInvestments, upsertDebts, upsertDerivedDebts,
   softDeleteItem, markItemNotified,
@@ -74,13 +74,15 @@ async function persistReport(localItem, payload) {
   }
 
   const institutionName = localItem?.institutionName || report?.checkingAccounts?.[0]?.brandName || report?.creditCardAccounts?.[0]?.brandName || 'Banco';
+  const client = await getClientById(localItem.clientId).catch(() => null);
+  const clientName = client?.name || localItem?.clientName || null;
   const mapped = mapKlaviReportToLocal({ productName, report, institutionCode, institutionName });
 
   const savedBank = mapped.bankTransactions.length
-    ? await upsertTransactionsBatch(localItem.clientId, localItem.id, mapped.bankTransactions)
+    ? await upsertTransactionsBatch(localItem.clientId, clientName, localItem.id, mapped.bankTransactions)
     : 0;
   const savedCredit = mapped.creditTransactions.length
-    ? await upsertCreditTransactionsBatch(localItem.clientId, localItem.id, mapped.creditTransactions)
+    ? await upsertCreditTransactionsBatch(localItem.clientId, clientName, localItem.id, mapped.creditTransactions)
     : 0;
   const savedInv = mapped.investments.length
     ? await upsertInvestments(localItem.clientId, localItem.id, mapped.investments)
@@ -159,6 +161,9 @@ export async function POST(request) {
   }
 
   const { event, eventId, linkId, consentId } = extractReportMetadata(payload);
+
+  // Salva payload bruto para debug (não afeta idempotência).
+  await recordKlaviWebhookDebug({ eventId, event, linkId, consentId, payload });
 
   // Payloads de teste de conectividade da Klavi costumam não ter event/eventId.
   // Aceitamos e retornamos 200 para não quebrar o teste.

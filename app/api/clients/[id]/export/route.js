@@ -24,11 +24,12 @@ export async function GET(request, { params }) {
       return doc;
     };
 
-    const header = 'ID,Data,Data Transação,Descrição,Tipo,Valor (R$),Saldo,Categoria L1,Categoria L2,Categoria L3,Conta,Agência/Número,Tipo de Conta,Banco,Razão Social,CNPJ/CPF,Origem,Status\n';
+    const header = 'ID,Cliente,Data,Data Transação,Descrição,Tipo,Valor (R$),Saldo,Categoria L1,Categoria L2,Categoria L3,Conta,Agência/Número,Tipo de Conta,Banco,Razão Social,CNPJ/CPF,Origem,Status\n';
     const rows = transactions
       .map((tx) =>
         [
           tx.id,
+          `"${(client.name || '').replace(/"/g, '""')}"`,
           new Date(tx.date).toLocaleDateString('pt-BR'),
           tx.dateTransacted ? new Date(tx.dateTransacted).toLocaleDateString('pt-BR') : '',
           `"${(tx.description || '').replace(/"/g, '""')}"`,

@@ -1,0 +1,17 @@
+Empresa           | Banco     | Conta(s)                                     | Status      | Atualizado
+------------------|-----------|----------------------------------------------|-------------|------------
+AMJLS 3          | Itaú      | 341/0580/99887-0                             | LOGIN_ERROR | 22/06 13:07
+AMJLS 5          | Itaú      | 341/0580/99894-6                             | LOGIN_ERROR | 10/06 23:51
+Amari            | Bradesco  | 237/03267/0042100-6                          | OUTDATED    | 25/05 15:01
+Amari            | Bradesco  | 237/03267/0052703-3,237/02304/0052703-3      | LOGIN_ERROR | 25/05 15:04
+Amari            | Bradesco  | 237/03267/0054179-6,237/02304/0054179-6      | OUTDATED    | 25/05 14:55
+Dubesser         | Santander | 033/0509/13005061-6                          | LOGIN_ERROR | 19/06 06:14
+Dubesser         | Sicredi   | 748/0726/41800-7                             | OUTDATED    | 12/06 22:12
+Marcon           | Sicredi   | 748/0720/62440-7                             | OUTDATED    | 12/06 22:12
+Natori Food      | Inter     | 8913,077/0001/22761761-4                     | OUTDATED    | 29/06 13:05
+O Grupo o Sapatei| Bradesco  | 237/02304/0053088-3                          | LOGIN_ERROR | 22/06 15:03
+O Grupo o Sapatei| Bradesco  | 237/03267/0042100-6                          | OUTDATED    | 22/06 15:13
+O Grupo o Sapatei| Bradesco  | 237/03267/0054179-6, 237/02304/0054179-6     | OUTDATED    | 22/06 15:12
+O Grupo o Sapatei| Bradesco  | 237/03267/0052703-3, 237/02304/0052703-3     | LOGIN_ERROR | 19/06 15:20
+
+📊 Total de itens com problema: 13

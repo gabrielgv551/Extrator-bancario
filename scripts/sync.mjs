@@ -124,7 +124,7 @@ function extractDateFromDescription(description, referenceDate) {
 
 // ── DB: upsert em batch ───────────────────────────────────────────────────────
 
-async function upsertBatch(table, clientId, pluggyItemId, transactions) {
+async function upsertBatch(table, clientId, clientName, pluggyItemId, transactions) {
   if (!transactions.length) return 0;
 
   const duplicates = [];
@@ -150,9 +150,9 @@ async function upsertBatch(table, clientId, pluggyItemId, transactions) {
   for (const dup of duplicates) {
     await pool.query(
       `UPDATE ${table}
-       SET status = $1, id = $2, synced_at = NOW()
-       WHERE id = $3`,
-      [dup.newTx.status ?? 'POSTED', dup.newTx.id, dup.existingId]
+       SET status = $1, id = $2, client_name = $3, synced_at = NOW()
+       WHERE id = $4`,
+      [dup.newTx.status ?? 'POSTED', dup.newTx.id, clientName ?? null, dup.existingId]
     ).catch(() => {});
   }
 
@@ -163,9 +163,9 @@ async function upsertBatch(table, clientId, pluggyItemId, transactions) {
     const params = [];
     let p = 1;
     for (const tx of chunk) {
-      placeholders.push(`($${p},$${p+1},$${p+2},$${p+3},$${p+4},$${p+5},$${p+6},$${p+7},$${p+8},$${p+9},$${p+10},$${p+11},$${p+12},$${p+13},$${p+14},$${p+15},$${p+16},$${p+17},$${p+18},$${p+19},NOW())`);
+      placeholders.push(`($${p},$${p+1},$${p+2},$${p+3},$${p+4},$${p+5},$${p+6},$${p+7},$${p+8},$${p+9},$${p+10},$${p+11},$${p+12},$${p+13},$${p+14},$${p+15},$${p+16},$${p+17},$${p+18},$${p+19},$${p+20},$${p+21},NOW())`);
       params.push(
-        tx.id, clientId, pluggyItemId, tx.date, tx.description ?? '',
+        tx.id, clientId, clientName ?? null, pluggyItemId, tx.date, tx.description ?? '',
         tx.type, tx.amount, tx.balance ?? null, tx.category ?? null,
         tx.categoryL1 ?? null, tx.categoryL2 ?? null, tx.categoryL3 ?? null,
         tx.accountName ?? null, tx.accountNumber ?? null,
@@ -173,15 +173,16 @@ async function upsertBatch(table, clientId, pluggyItemId, transactions) {
         tx.counterpartyName ?? null, tx.counterpartyDocument ?? null,
         tx.status ?? null, tx.dateTransacted ?? null,
       );
-      p += 20;
+      p += 22;
     }
     await pool.query(
       `INSERT INTO ${table}
-         (id, client_id, pluggy_item_id, date, description, type, amount, balance,
+         (id, client_id, client_name, pluggy_item_id, date, description, type, amount, balance,
           category, category_l1, category_l2, category_l3, account_name, account_number, account_type, institution_name,
           counterparty_name, counterparty_document, status, date_transacted, synced_at)
        VALUES ${placeholders.join(',')}
        ON CONFLICT (id) DO UPDATE SET
+         client_name=EXCLUDED.client_name,
          description=EXCLUDED.description, amount=EXCLUDED.amount, balance=EXCLUDED.balance,
          category=EXCLUDED.category, category_l1=EXCLUDED.category_l1, category_l2=EXCLUDED.category_l2, category_l3=EXCLUDED.category_l3,
          account_number=EXCLUDED.account_number,

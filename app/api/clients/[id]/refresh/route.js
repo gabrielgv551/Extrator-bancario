@@ -1,42 +1,10 @@
 import { NextResponse } from 'next/server';
 import { getClientById, getItemsByClientId, updateClient, updateItemStatus } from '@/lib/storage';
-import { requestBusinessInstitutionData, requestPersonalInstitutionData, getConsentList } from '@/lib/klavi';
+import { requestBusinessInstitutionData, requestPersonalInstitutionData, getActiveKlaviConsent } from '@/lib/klavi';
+import { syncItemData } from '@/lib/sync-processor';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
-
-const DEFAULT_PRODUCTS = ['pj_categorized_checking_l3'];
-
-// Mapeia produtos retornados pelo consentimento da Klavi (nomenclatura Open Finance)
-// para os nomes EXATOS aceitos pelo endpoint /business/institution-data.
-// Ver: https://docs.klavi.ai/connect/overview
-const CONSENT_PRODUCT_MAP = {
-  'ACCOUNTS_ALL': ['pj_categorized_checking_l3'],
-  'CREDIT_CARDS_ALL': ['pj_categorized_creditcard_l3'],
-  'CREDIT_OPERATIONS_LOANS': ['pj_loans'],
-  'CREDIT_OPERATIONS_FINANCINGS': ['pj_financing'],
-  'CREDIT_OPERATIONS_UNARRANGED_ACCOUNTS_OVERDRAFT': ['pj_unarranged_account_overdraft'],
-  'CREDIT_OPERATIONS_INVOICE_FINANCINGS': ['pj_invoice_financing'],
-  'INVESTMENTS_BANK_FIXED_INCOMES': ['pj_bank_fixed_incomes'],
-  'INVESTMENTS_CREDIT_FIXED_INCOMES': ['pj_credit_fixed_incomes'],
-  'INVESTMENTS_VARIABLE_INCOMES': ['pj_variable_incomes'],
-  'INVESTMENTS_FUNDS': ['pj_funds'],
-  'INVESTMENTS_TREASURE_TITLES': ['pj_treasure_titles'],
-};
-
-function mapConsentProducts(consentProducts) {
-  // Queremos apenas o extrato bancário. Se o consentimento incluir ACCOUNTS_ALL,
-  // usamos o produto institution-level de extrato categorizado L2.
-  if (!Array.isArray(consentProducts) || consentProducts.length === 0) return DEFAULT_PRODUCTS;
-  const mapped = new Set();
-  for (const p of consentProducts) {
-    const key = String(p).toUpperCase();
-    if (CONSENT_PRODUCT_MAP[key]) {
-      CONSENT_PRODUCT_MAP[key].forEach(m => mapped.add(m));
-    }
-  }
-  return mapped.size > 0 ? [...mapped] : DEFAULT_PRODUCTS;
-}
 
 export async function POST(request, { params }) {
   const { id } = await params;
@@ -69,78 +37,10 @@ export async function POST(request, { params }) {
 
     const results = [];
 
-    async function resolvePersonalTaxId(item) {
-      if (item.personalTaxId) return item.personalTaxId;
-      if (!item.klaviLinkId && !item.klaviConsentId) return null;
-      try {
-        const list = await getConsentList({
-          linkId: item.klaviLinkId || undefined,
-          businessTaxId: item.businessTaxId || clientBusinessTaxId || undefined,
-        });
-        const consents = Array.isArray(list) ? list : (list?.consents || []);
-        const match = consents.find(c =>
-          c.consentId === item.klaviConsentId ||
-          c.consentid === item.klaviConsentId ||
-          c.institutionCode === item.institutionCode
-        );
-        if (match?.personalTaxId || match?.personaltaxid) {
-          const cpf = match.personalTaxId || match.personaltaxid;
-          console.log('[refresh] CPF resolvido via getConsentList:', cpf);
-          await updateItemStatus(item.id, { personalTaxId: cpf });
-          return cpf;
-        }
-      } catch (err) {
-        console.warn('[refresh] falha ao buscar CPF via getConsentList:', err.message);
-      }
-      return null;
-    }
-
-    async function resolveActiveConsent(item) {
-      if (!item.klaviLinkId && !item.klaviConsentId) return null;
-      const filters = [
-        { linkId: item.klaviLinkId || undefined, businessTaxId: item.businessTaxId || clientBusinessTaxId || undefined, personalTaxId: item.personalTaxId || undefined },
-        { businessTaxId: item.businessTaxId || clientBusinessTaxId || undefined, personalTaxId: item.personalTaxId || undefined },
-      ];
-      try {
-        for (const params of filters) {
-          const list = await getConsentList(params);
-          const consents = Array.isArray(list) ? list : (list?.consents || []);
-          console.log('[refresh] consentimentos encontrados para item=%s via %j: count=%d', item.id, params, consents.length);
-          // Consentimentos autorizados para a mesma instituição, do mais recente ao mais antigo.
-          const authorised = consents
-            .filter(c =>
-              String(c.institutionCode).toLowerCase() === String(item.institutionCode).toLowerCase() &&
-              ['authorised', 'authorized'].includes(String(c.status).toLowerCase())
-            )
-            .sort((a, b) => {
-              const da = a.updatedAt || a.createdAt || a.consentId;
-              const db = b.updatedAt || b.createdAt || b.consentId;
-              return String(db).localeCompare(String(da));
-            });
-          if (authorised.length > 0) {
-            const chosen = authorised[0];
-            const consentId = chosen.consentId || chosen.consentid;
-            const linkId = chosen.linkId || chosen.linkid || item.klaviLinkId;
-            const consentProducts = chosen.products || chosen.product || chosen.scope || chosen.scopes;
-            const products = mapConsentProducts(consentProducts);
-            console.log('[refresh] consentimento autorizado escolhido para item=%s: consentId=%s linkId=%s products=%j rawProducts=%j', item.id, consentId, linkId, products, consentProducts);
-            const updates = {};
-            if (consentId && consentId !== item.klaviConsentId) updates.klaviConsentId = consentId;
-            if (linkId && linkId !== item.klaviLinkId) updates.klaviLinkId = linkId;
-            if (Object.keys(updates).length > 0) {
-              await updateItemStatus(item.id, updates);
-              console.log('[refresh] item=%s atualizado com %j', item.id, updates);
-            }
-            return { consentId, linkId, products, rawConsent: chosen };
-          }
-        }
-      } catch (err) {
-        console.warn('[refresh] falha ao buscar consentimentos ativos:', err.message);
-      }
-      return { consentId: item.klaviConsentId || null, linkId: item.klaviLinkId || null };
-    }
-
+    console.log('[refresh] cliente=%s totalItens=%d itensKlavi=%d itemIdFilter=%s', client.name, items.length, klaviItems.length, itemId || 'nenhum');
     for (const item of klaviItems) {
+      console.log('[refresh] processando item id=%s bank=%s provider=%s taxType=%s linkId=%s consentId=%s institutionCode=%s businessTaxId=%s',
+        item.id, item.institutionName, item.provider, item.taxType, item.klaviLinkId, item.klaviConsentId, item.institutionCode, item.businessTaxId || client.businessTaxId);
       const isPF = item.taxType === 'pf';
       const itemBusinessTaxId = item.businessTaxId || clientBusinessTaxId;
       if (!item.klaviLinkId || !item.institutionCode || (!isPF && !itemBusinessTaxId)) {
@@ -153,66 +53,24 @@ export async function POST(request, { params }) {
         continue;
       }
 
-      const activeConsent = await resolveActiveConsent(item);
-      const activeConsentId = activeConsent.consentId;
-      const activeLinkId = activeConsent.linkId;
-      const activeProducts = activeConsent.products || DEFAULT_PRODUCTS;
+      const activeConsent = await getActiveKlaviConsent({
+        item,
+        businessTaxId: itemBusinessTaxId,
+        personalTaxId: item.personalTaxId || undefined,
+      });
+      console.log('[refresh] consentimento ativo item=%s consentId=%s linkId=%s products=%j',
+        item.id, activeConsent.consentId, activeConsent.linkId, activeConsent.products);
 
-      if (isPF) {
-        const personalTaxId = item.personalTaxId || await resolvePersonalTaxId(item);
-        if (!personalTaxId) {
-          results.push({
-            itemId: item.id,
-            bank: item.institutionName,
-            success: false,
-            reason: 'CPF não encontrado para conta PF. Reconecte pelo portal informando o CPF.',
-          });
-          continue;
-        }
-        if (!activeConsentId) {
-          results.push({
-            itemId: item.id,
-            bank: item.institutionName,
-            success: false,
-            reason: 'Nenhum consentimento ativo encontrado para este banco. Reconecte pelo portal.',
-          });
-          continue;
-        }
-        try {
-          const pfRequestBody = {
-            personalTaxId,
-            institutionCode: item.institutionCode,
-            linkId: activeLinkId,
-            consentIds: [activeConsentId],
-            products: activeProducts,
-            productsCallbackUrl: process.env.KLAVI_WEBHOOK_URL || null,
-          };
-          console.log('[refresh] solicitando dados Klavi PF:', JSON.stringify(pfRequestBody));
-          await requestPersonalInstitutionData(pfRequestBody);
-          await updateItemStatus(item.id, { status: 'UPDATING' });
-          results.push({
-            itemId: item.id,
-            bank: item.institutionName,
-            success: true,
-            status: 'REQUESTED_PF',
-            message: 'Solicitação de relatório PF enviada. Dados chegarão via webhook.',
-          });
-        } catch (err) {
-          console.error('[refresh] erro ao solicitar dados PF:', err);
-          results.push({
-            itemId: item.id,
-            bank: item.institutionName,
-            success: false,
-            reason: err.message,
-            klaviStatus: err.status,
-            klaviCode: err.code,
-            klaviBody: err.body,
-          });
-        }
-        continue;
+      // Atualiza item local se o consentimento/link ativo mudou.
+      const consentUpdates = {};
+      if (activeConsent.consentId && activeConsent.consentId !== item.klaviConsentId) consentUpdates.klaviConsentId = activeConsent.consentId;
+      if (activeConsent.linkId && activeConsent.linkId !== item.klaviLinkId) consentUpdates.klaviLinkId = activeConsent.linkId;
+      if (Object.keys(consentUpdates).length > 0) {
+        await updateItemStatus(item.id, consentUpdates);
+        console.log('[refresh] item=%s atualizado com %j', item.id, consentUpdates);
       }
 
-      if (!activeConsentId) {
+      if (!activeConsent.consentId) {
         results.push({
           itemId: item.id,
           bank: item.institutionName,
@@ -222,17 +80,32 @@ export async function POST(request, { params }) {
         continue;
       }
 
+      const requestBody = {
+        institutionCode: item.institutionCode,
+        linkId: activeConsent.linkId,
+        consentIds: [activeConsent.consentId],
+        products: activeConsent.products,
+        productsCallbackUrl: process.env.KLAVI_WEBHOOK_URL || null,
+      };
+
       try {
-        const requestBody = {
-          businessTaxId: itemBusinessTaxId,
-          institutionCode: item.institutionCode,
-          linkId: activeLinkId,
-          consentIds: [activeConsentId],
-          products: activeProducts,
-          productsCallbackUrl: process.env.KLAVI_WEBHOOK_URL || null,
-        };
-        console.log('[refresh] solicitando dados Klavi PJ:', JSON.stringify(requestBody));
-        await requestBusinessInstitutionData(requestBody);
+        if (isPF) {
+          const personalTaxId = item.personalTaxId;
+          if (!personalTaxId) {
+            results.push({
+              itemId: item.id,
+              bank: item.institutionName,
+              success: false,
+              reason: 'CPF não encontrado para conta PF. Reconecte pelo portal informando o CPF.',
+            });
+            continue;
+          }
+          console.log('[refresh] solicitando dados Klavi PF:', JSON.stringify({ ...requestBody, personalTaxId }));
+          await requestPersonalInstitutionData({ ...requestBody, personalTaxId });
+        } else {
+          console.log('[refresh] solicitando dados Klavi PJ:', JSON.stringify({ ...requestBody, businessTaxId: itemBusinessTaxId }));
+          await requestBusinessInstitutionData({ ...requestBody, businessTaxId: itemBusinessTaxId });
+        }
 
         await updateItemStatus(item.id, { status: 'UPDATING' });
 
@@ -241,12 +114,10 @@ export async function POST(request, { params }) {
           bank: item.institutionName,
           success: true,
           status: 'REQUESTED',
-          message: 'Solicitação de relatório PJ enviada. Dados chegarão via webhook.',
+          message: 'Solicitação de relatório enviada. Dados chegarão via webhook.',
         });
       } catch (err) {
-        console.error('[refresh] erro ao solicitar dados PJ:', err);
-        console.error('[refresh] body do erro:', err.body, 'status:', err.status, 'code:', err.code);
-
+        console.error('[refresh] erro ao solicitar dados:', err);
         results.push({
           itemId: item.id,
           bank: item.institutionName,
@@ -255,34 +126,53 @@ export async function POST(request, { params }) {
           klaviStatus: err.status,
           klaviCode: err.code,
           klaviBody: err.body,
-          debug: {
-            activeConsentId,
-            activeLinkId,
-            itemLinkId: item.klaviLinkId,
-            itemConsentId: item.klaviConsentId,
-            requestBody: {
-              businessTaxId: itemBusinessTaxId,
-              institutionCode: item.institutionCode,
-              linkId: activeLinkId,
-              consentIds: [activeConsentId],
-              products: activeProducts,
-              productsCallbackUrl: process.env.KLAVI_WEBHOOK_URL || null,
-            },
-            rawConsent: activeConsent.rawConsent || null,
-          },
         });
       }
     }
 
-    // Itens legados Pluggy não são mais atualizados; avisamos no resultado.
+    // Itens legados Pluggy também são sincronizados (se houver pluggyItemId).
     const legacyItems = toProcess.filter(i => i.provider === 'pluggy' && i.pluggyItemId);
     for (const item of legacyItems) {
-      results.push({
-        itemId: item.id,
-        bank: item.institutionName,
-        success: false,
-        reason: 'Item Pluggy legado. Reconecte pelo portal para usar Klavi.',
-      });
+      const localItem = {
+        id: item.id,
+        clientId: item.clientId,
+        pluggyItemId: item.pluggyItemId,
+        institutionName: item.institutionName,
+        institutionLogo: item.institutionLogo,
+        accountNumbers: item.accountNumbers,
+        status: item.status,
+        executionStatus: item.executionStatus,
+        errorCode: item.errorCode,
+        errorMessage: item.errorMessage,
+        lastUpdatedAt: item.lastUpdatedAt,
+        lastErrorAt: item.lastErrorAt,
+        syncCount: item.syncCount,
+        consecutiveErrors: item.consecutiveErrors,
+        requiresReconnect: item.requiresReconnect,
+        deletedAt: item.deletedAt,
+        consentExpiresAt: item.consentExpiresAt,
+        notificationSentAt: item.notificationSentAt,
+        createdAt: item.createdAt,
+      };
+      try {
+        const result = await syncItemData(localItem, { skipIfNotHealthy: true });
+        results.push({
+          itemId: item.id,
+          bank: item.institutionName,
+          success: result.success,
+          status: result.status,
+          transactions: result.transactions?.total ?? 0,
+          reason: result.reason || null,
+        });
+      } catch (err) {
+        console.error('[refresh] erro ao sincronizar item Pluggy:', err);
+        results.push({
+          itemId: item.id,
+          bank: item.institutionName,
+          success: false,
+          reason: err.message,
+        });
+      }
     }
 
     await updateClient(id, { lastSync: new Date().toISOString() });

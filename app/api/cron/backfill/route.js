@@ -39,8 +39,8 @@ export async function GET(request) {
         const bankTx   = allTx.filter(tx => tx.accountType !== 'CREDIT');
         const creditTx = allTx.filter(tx => tx.accountType === 'CREDIT');
 
-        const savedBank   = await upsertTransactions(client.id, item.pluggyItemId, bankTx);
-        const savedCredit = await upsertCreditTransactions(client.id, item.pluggyItemId, creditTx);
+        const savedBank   = await upsertTransactions(client.id, client.name, item.pluggyItemId, bankTx);
+        const savedCredit = await upsertCreditTransactions(client.id, client.name, item.pluggyItemId, creditTx);
 
         results.push({
           client: client.name,

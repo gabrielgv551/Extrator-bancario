@@ -152,7 +152,7 @@ O banco `extratos` roda em PostgreSQL. O script `scripts/setup-db.mjs` cria/atua
 - Itens com `LOGIN_ERROR`/`INVALID_CREDENTIALS`/`USER_AUTHORIZATION_REVOKED` são marcados com `requires_reconnect = true` e exibem alerta no dashboard e portal.
 
 ### Cron de Sincronização
-- Configurado no `vercel.json` para rodar diariamente às 09:00 no path `/api/cron/sync`.
+- Configurado no `vercel.json` para rodar diariamente às 12:00 (UTC-3 / horário de Brasília) no path `/api/cron/sync`.
 - O cron adquire lock distribuído antes de executar.
 - PATCH em itens é feito de forma serial com delay entre chamadas (rate-limit de 20 PATCH/min da Pluggy).
 - Após PATCH, aguarda até 30s o item sair de `UPDATING` antes de buscar transações.
@@ -259,4 +259,18 @@ Para reduzir desconexões automáticas das contas Pluggy, o projeto adota as seg
 
 ## Have Gestor Integration
 
-O arquivo `gestor.config.js` exporta `GESTOR_COMPANIES`, uma lista de empresas que podem ser vinculadas a clientes via campo `gestor_empresa` na tabela `clients`. Isso permite integração futura com o sistema Have Gestor.
+O arquivo `gestor.config.js` exporta `GESTOR_COMPANIES`, uma lista de empresas que podem ser vinculadas a clientes via campo `gestor_empresa` na tabela `clients`.
+
+A integração ativa com o Have Gestor usa as rotas abaixo, protegidas por `GESTOR_API_TOKEN`:
+
+- `POST /api/gestor/client` — recebe `{ empresa, nome, businessTaxId }`, cria ou atualiza o cliente vinculado à empresa e retorna o `portalUrl`.
+- `GET /api/gestor/client?empresa=...` — retorna o cliente vinculado à empresa, se existir.
+- `GET /api/gestor/client/items?empresa=...` — retorna os itens/conexões bancárias do cliente vinculado à empresa, incluindo `diagnostics` com status, erros e `requiresReconnect`.
+
+O Have Gestor chama essas APIs para abrir o portal e listar o status das contas conectadas; o usuário conecta os bancos no Extrator; os dados sincronizados são consumidos pelo Have através do banco `extratos` (`motor/pluggy_extrato.py`) ou leitura direta em `caixa_extrato`.
+
+### Variáveis de ambiente
+
+```
+GESTOR_API_TOKEN=<mesmo_valor_de_EXTRATOR_API_TOKEN_no_Have_SOP>
+```
