@@ -1,11 +1,14 @@
-# Extrator Bancário — Pluggy
+# Extrator Bancário — Open Finance
 
-Web app para gestão de extratos bancários de múltiplos clientes via [Pluggy](https://pluggy.ai).
+Web app para gestão de extratos bancários de múltiplos clientes via **Pluggy** e **Klavi** (Open Finance), integrado ao **Have Gestor**.
+
+Cada empresa (tenant) do Have Gestor possui seus próprios dados isolados no respectivo banco PostgreSQL. A aplicação resolve o banco correto a partir do slug da empresa.
 
 ## Pré-requisitos
 
 - [Node.js](https://nodejs.org) versão 18 ou superior
-- Conta ativa na Pluggy com `CLIENT_ID` e `CLIENT_SECRET`
+- PostgreSQL (banco central `have_gestor` + um banco por empresa)
+- Conta ativa na **Pluggy** (legado) e/ou **Klavi** (Open Finance)
 
 ## Instalação
 
@@ -17,12 +20,16 @@ npm install
 cp .env.example .env.local
 ```
 
-Abra o arquivo `.env.local` e preencha com suas credenciais do dashboard Pluggy:
+Abra o arquivo `.env.local` e preencha todas as credenciais (Pluggy, Klavi, banco central e banco legado).
 
-```
-PLUGGY_CLIENT_ID=seu_client_id_aqui
-PLUGGY_CLIENT_SECRET=seu_client_secret_aqui
-```
+## Variáveis de ambiente principais
+
+- `DATABASE_URL` — banco legado do Extrator (usado apenas na migração de dados históricos).
+- `CENTRAL_DB_*` — banco central `have_gestor` (lista de empresas e credenciais de cada tenant).
+- `GESTOR_API_TOKEN` — token compartilhado com o Have Gestor.
+- `PLUGGY_*` e `KLAVI_*` — credenciais dos provedores Open Finance.
+
+Veja `.env.example` para a lista completa.
 
 ## Rodando localmente
 
@@ -32,53 +39,75 @@ npm run dev
 
 Acesse: [http://localhost:3000](http://localhost:3000)
 
+## Arquitetura multi-tenant
+
+- `lib/company-db.js` — resolve o pool PostgreSQL do banco da empresa a partir do slug.
+- `lib/storage-company.js` — todas as operações de banco usam tabelas prefixadas `extrator_*` no banco da empresa.
+- `lib/central-token-map.js` — mantém no banco central os mapeamentos:
+  - `portal_token → empresa_slug` (para rotas públicas do portal)
+  - `item_id / pluggy_item_id / klavi_link_id / klavi_consent_id → empresa_slug` (para webhooks)
+- `middleware.js` — injeta o header `x-extrator-empresa` para rotas protegidas do admin.
+
 ## Como usar
 
-### 1. Cadastrar um cliente
+### 1. Login
+- Na tela de login informe o **slug da empresa** (ex: `lanzi`) e a senha de admin.
+- O middleware passa a empresa para todas as rotas protegidas.
+
+### 2. Cadastrar um cliente
 - Clique em **Novo Cliente** no dashboard
 - Digite o nome do cliente
 
-### 2. Conectar a conta bancária
+### 3. Conectar a conta bancária
 - Clique em **Ver Extrato** do cliente desejado
 - Clique em **Conectar Banco**
-- O widget da Pluggy abrirá — o cliente autentica na instituição bancária
-- O `itemId` é salvo automaticamente
+- O widget do provedor abrirá — o cliente autentica na instituição bancária
+- O `itemId` é salvo automaticamente no banco da empresa
 
-### 3. Baixar o extrato
+### 4. Baixar o extrato
 - Selecione o período (De / Até)
 - Clique em **Buscar Extrato**
 - Visualize as transações com resumo de entradas, saídas e saldo
-- Clique em **Exportar CSV** para baixar o arquivo (compatível com Excel)
+- Clique em **Exportar CSV** para baixar o arquivo
 
-### 4. Reconectar banco
+### 5. Reconectar banco
 Se o banco exigir nova autenticação, clique em **Reconectar Banco** — o mesmo `itemId` será reutilizado.
 
 ## Estrutura do projeto
 
 ```
 app/
-  page.jsx                        → Dashboard (lista de clientes)
+  login/page.jsx                  → Login por empresa
+  page.jsx                        → Dashboard (lista de clientes da empresa)
   clients/[id]/page.jsx           → Extrato do cliente
   api/
-    connect-token/route.js        → Gera Connect Token (seguro, server-side)
-    clients/route.js              → CRUD de clientes
-    clients/[id]/route.js
-    clients/[id]/transactions/    → Busca transações via Pluggy
-    clients/[id]/export/          → Exporta CSV
+    admin/login/                  → Autenticação e cookie de empresa
+    gestor/client/*               → API usada pelo Have Gestor
+    portal/[token]/*              → Rotas públicas do portal do cliente
+    clients/*                     → CRUD e operações do dashboard
+    cron/*                        → Sincronização automática (por empresa)
+    webhooks/*                    → Webhooks Pluggy/Klavi
 
 lib/
-  pluggy.js                       → Wrapper da Pluggy API
-  storage.js                      → Persistência em JSON local
+  company-db.js                   → Resolve pool do banco da empresa
+  central-token-map.js            → Mapeamentos centrais token/item → empresa
+  storage-company.js              → Persistência por tenant (tabelas extrator_*)
+  pluggy.js / klavi.js            → Wrappers das APIs
+  sync-processor.js               → Sincronização Pluggy
 
-data/
-  clients.json                    → Gerado automaticamente (não commitar)
+scripts/
+  migrate_extrator_to_companies.py → Migra dados do banco legado para tenants
 ```
 
-## Segurança
+## Migração de dados históricos
 
-- `CLIENT_ID` e `CLIENT_SECRET` ficam **somente** no servidor (`.env.local`)
-- O frontend só recebe um `connectToken` temporário (válido por 30 min)
-- O arquivo `data/clients.json` fica local na máquina (não sobe ao git)
+Se você já usava o Extrator com um banco central único (`DATABASE_URL`), execute:
+
+```bash
+python scripts/migrate_extrator_to_companies.py
+```
+
+O script migra clientes, itens, transações, investimentos, dívidas, sync logs e webhook events para o banco de cada empresa e preenche as tabelas centrais de mapeamento.
 
 ## Produção
 
@@ -87,7 +116,6 @@ npm run build
 npm start
 ```
 
-Para deploy em nuvem (Vercel, Railway, etc.), configure as variáveis de ambiente
-`PLUGGY_CLIENT_ID` e `PLUGGY_CLIENT_SECRET` no painel da plataforma.
-> **Atenção:** Em deploy na nuvem, o `data/clients.json` não persiste entre deploys.
-> Considere migrar o storage para um banco de dados como PostgreSQL ou SQLite persistente.
+Para deploy em nuvem (Vercel, Railway, etc.), configure todas as variáveis de ambiente listadas em `.env.example`.
+
+> **Atenção:** Certifique-se de que a migration `093_extrator_tables_per_empresa.sql` foi aplicada em cada banco de empresa antes de ativar o app.
