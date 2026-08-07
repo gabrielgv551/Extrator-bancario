@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server';
-import { getClientByToken, addKlaviItem, getItemByKlaviLinkId, updateItemStatus } from '@/lib/storage';
+import { getClientByToken, addKlaviItem, getItemByKlaviLinkId, updateItemStatus } from '@/lib/storage-company';
+import { getEmpresaByToken } from '@/lib/central-token-map';
+import { getCompanyPool } from '@/lib/company-db';
 import { requestBusinessInstitutionData } from '@/lib/klavi';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -11,7 +13,14 @@ const DEFAULT_PRODUCTS = ['pj_categorized_checking_l3'];
 
 export async function GET(request, { params }) {
   const { token } = await params;
-  const client = await getClientByToken(token);
+
+  const empresa = await getEmpresaByToken(token);
+  if (!empresa) {
+    return NextResponse.json({ error: 'Portal não encontrado' }, { status: 404 });
+  }
+
+  const pool = await getCompanyPool(empresa);
+  const client = await getClientByToken(pool, token);
   if (!client) {
     return NextResponse.json({ error: 'Portal não encontrado' }, { status: 404 });
   }
@@ -37,9 +46,9 @@ export async function GET(request, { params }) {
 
   try {
     // O item pode já ter sido criado pelo portal antes do redirect; se não, criamos um placeholder.
-    let item = await getItemByKlaviLinkId(linkId);
+    let item = await getItemByKlaviLinkId(pool, linkId);
     if (!item) {
-      item = await addKlaviItem({
+      item = await addKlaviItem(pool, {
         id: uuidv4(),
         clientId: client.id,
         klaviLinkId: linkId,
@@ -76,7 +85,7 @@ export async function GET(request, { params }) {
       }
     }
 
-    await updateItemStatus(item.id, { status: 'UPDATING', klaviConsentId: consentId || item.klaviConsentId });
+    await updateItemStatus(pool, item.id, { status: 'UPDATING', klaviConsentId: consentId || item.klaviConsentId });
 
     return NextResponse.json({
       success: true,

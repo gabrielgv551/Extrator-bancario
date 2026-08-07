@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server';
-import { getClientByToken, getItemById } from '@/lib/storage';
+import { getClientByToken, getItemById } from '@/lib/storage-company';
+import { getEmpresaByToken } from '@/lib/central-token-map';
+import { getCompanyPool } from '@/lib/company-db';
 import { requestBusinessInstitutionData, requestPersonalInstitutionData } from '@/lib/klavi';
 
 export const dynamic = 'force-dynamic';
@@ -9,11 +11,16 @@ const DEFAULT_PRODUCTS = ['all'];
 
 export async function POST(request, { params }) {
   const { token } = await params;
-  const client = await getClientByToken(token);
+
+  const empresa = await getEmpresaByToken(token);
+  if (!empresa) return NextResponse.json({ error: 'Portal não encontrado' }, { status: 404 });
+
+  const pool = await getCompanyPool(empresa);
+  const client = await getClientByToken(pool, token);
   if (!client) return NextResponse.json({ error: 'Portal não encontrado' }, { status: 404 });
 
   const { itemId } = await params;
-  const item = await getItemById(itemId);
+  const item = await getItemById(pool, itemId);
   if (!item || item.clientId !== client.id) {
     return NextResponse.json({ error: 'Item não encontrado' }, { status: 404 });
   }

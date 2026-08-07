@@ -1,30 +1,44 @@
 import { NextResponse } from 'next/server';
-import { getClientByToken, getItemsByClientId, addItem, addKlaviItem } from '@/lib/storage';
+import { getClientByToken, getItemsByClientId, addItem, addKlaviItem } from '@/lib/storage-company';
+import { getEmpresaByToken } from '@/lib/central-token-map';
+import { getCompanyPool } from '@/lib/company-db';
 import { getItem, getAccounts } from '@/lib/pluggy';
 import { v4 as uuidv4 } from 'uuid';
 
 export const dynamic = 'force-dynamic';
 
+async function resolveClient(token) {
+  const empresa = await getEmpresaByToken(token);
+  if (!empresa) return null;
+  const pool = await getCompanyPool(empresa);
+  const client = await getClientByToken(pool, token);
+  if (!client) return null;
+  return { pool, client };
+}
+
 export async function GET(_, { params }) {
   const { token } = await params;
-  const client = await getClientByToken(token);
-  if (!client) return NextResponse.json({ error: 'Portal não encontrado' }, { status: 404 });
+  const resolved = await resolveClient(token);
+  if (!resolved) return NextResponse.json({ error: 'Portal não encontrado' }, { status: 404 });
 
-  const items = await getItemsByClientId(client.id);
+  const { pool, client } = resolved;
+  const items = await getItemsByClientId(pool, client.id);
   return NextResponse.json(items);
 }
 
 export async function POST(request, { params }) {
   const { token } = await params;
-  const client = await getClientByToken(token);
-  if (!client) return NextResponse.json({ error: 'Portal não encontrado' }, { status: 404 });
+  const resolved = await resolveClient(token);
+  if (!resolved) return NextResponse.json({ error: 'Portal não encontrado' }, { status: 404 });
+
+  const { pool, client } = resolved;
 
   try {
     const body = await request.json().catch(() => ({}));
 
     // Fluxo Klavi
     if (body.klaviLinkId || body.klaviConsentId) {
-      const item = await addKlaviItem({
+      const item = await addKlaviItem(pool, {
         id: uuidv4(),
         clientId: client.id,
         klaviLinkId: body.klaviLinkId || null,
@@ -56,7 +70,7 @@ export async function POST(request, { params }) {
     const unique = [...new Set(nums)];
     const accountNumbers = unique.length > 0 ? unique.join(', ') : null;
 
-    const item = await addItem({
+    const item = await addItem(pool, {
       id: uuidv4(),
       clientId: client.id,
       pluggyItemId,
