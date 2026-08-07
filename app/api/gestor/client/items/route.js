@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
-import { getClientByGestorEmpresa, getItemsByClientId } from '@/lib/storage';
+import { getClientByGestorEmpresa, getItemsByClientId } from '@/lib/storage-company';
+import { getCompanyPool } from '@/lib/company-db';
 import { isItemHealthy } from '@/lib/status';
 
 export const dynamic = 'force-dynamic';
@@ -36,12 +37,13 @@ export async function GET(request) {
   if (!empresa) return badRequest('empresa é obrigatória');
 
   try {
-    const client = await getClientByGestorEmpresa(empresa);
+    const pool = await getCompanyPool(empresa);
+    const client = await getClientByGestorEmpresa(pool, empresa);
     if (!client) {
       return NextResponse.json({ client: null, items: [], diagnostics: [] });
     }
 
-    const items = await getItemsByClientId(client.id);
+    const items = await getItemsByClientId(pool, client.id);
     const diagnostics = items.map(item => ({
       id: item.id,
       bank: item.institutionName,

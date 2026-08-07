@@ -1,5 +1,11 @@
 import { NextResponse } from 'next/server';
-import { getClientByGestorEmpresa, createClient, updateClient, generatePortalToken } from '@/lib/storage';
+import {
+  getClientByGestorEmpresa,
+  createClient,
+  updateClient,
+  generatePortalToken,
+} from '@/lib/storage-company';
+import { getCompanyPool } from '@/lib/company-db';
 import { v4 as uuidv4 } from 'uuid';
 
 export const dynamic = 'force-dynamic';
@@ -47,7 +53,8 @@ export async function GET(request) {
   if (!empresa) return badRequest('empresa é obrigatória');
 
   try {
-    const client = await getClientByGestorEmpresa(empresa);
+    const pool = await getCompanyPool(empresa);
+    const client = await getClientByGestorEmpresa(pool, empresa);
     if (!client) {
       return NextResponse.json({ client: null, portalUrl: null }, { status: 200 });
     }
@@ -80,7 +87,8 @@ export async function POST(request) {
   if (!nome) return badRequest('nome é obrigatório');
 
   try {
-    let client = await getClientByGestorEmpresa(empresa);
+    const pool = await getCompanyPool(empresa);
+    let client = await getClientByGestorEmpresa(pool, empresa);
 
     if (client) {
       const updates = {};
@@ -89,10 +97,10 @@ export async function POST(request) {
         updates.businessTaxId = businessTaxId;
       }
       if (Object.keys(updates).length > 0) {
-        client = await updateClient(client.id, updates);
+        client = await updateClient(pool, client.id, updates);
       }
     } else {
-      client = await createClient({
+      client = await createClient(pool, {
         id: uuidv4(),
         name: nome,
         portalToken: generatePortalToken(),

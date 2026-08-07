@@ -13,10 +13,20 @@ async function sessionToken(password) {
 export async function middleware(request) {
   const { pathname } = request.nextUrl;
 
-  if (PUBLIC.some((p) => pathname.startsWith(p))) return NextResponse.next();
+  if (PUBLIC.some((p) => pathname.startsWith(p))) {
+    // Rotas públicas do portal carregam empresa do token da URL
+    if (pathname.startsWith('/portal') || pathname.startsWith('/api/portal')) {
+      const empresa = pathname.split('/')[2];
+      if (empresa && /^[a-z0-9_-]+$/.test(empresa)) {
+        request.headers.set('x-extrator-empresa', empresa);
+      }
+    }
+    return NextResponse.next();
+  }
   if (pathname.startsWith('/_next') || pathname === '/favicon.ico') return NextResponse.next();
 
   const session = request.cookies.get('admin_session')?.value;
+  const empresa = request.cookies.get('extrator_empresa')?.value;
   const password = process.env.ADMIN_PASSWORD;
   if (!password) {
     console.error('[middleware] ADMIN_PASSWORD não configurada');
@@ -24,9 +34,11 @@ export async function middleware(request) {
   }
   const expected = await sessionToken(password);
 
-  if (session !== expected) {
+  if (session !== expected || !empresa) {
     return NextResponse.redirect(new URL('/login', request.url));
   }
+
+  request.headers.set('x-extrator-empresa', empresa);
   return NextResponse.next();
 }
 
