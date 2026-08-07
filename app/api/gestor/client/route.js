@@ -6,6 +6,7 @@ import {
   generatePortalToken,
 } from '@/lib/storage-company';
 import { getCompanyPool } from '@/lib/company-db';
+import { registerToken } from '@/lib/central-token-map';
 import { v4 as uuidv4 } from 'uuid';
 
 export const dynamic = 'force-dynamic';
@@ -107,6 +108,13 @@ export async function POST(request) {
         businessTaxId,
         gestorEmpresa: empresa,
       });
+    }
+
+    // Registra/atualiza o mapeamento central token -> empresa para o portal publico
+    try {
+      await registerToken(client.portalToken, empresa, client.id);
+    } catch (err) {
+      console.error('[gestor/client] falha ao registrar token no mapa central:', err.message);
     }
 
     const origin = new URL(request.url).origin;

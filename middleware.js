@@ -14,13 +14,8 @@ export async function middleware(request) {
   const { pathname } = request.nextUrl;
 
   if (PUBLIC.some((p) => pathname.startsWith(p))) {
-    // Rotas públicas do portal carregam empresa do token da URL
-    if (pathname.startsWith('/portal') || pathname.startsWith('/api/portal')) {
-      const empresa = pathname.split('/')[2];
-      if (empresa && /^[a-z0-9_-]+$/.test(empresa)) {
-        request.headers.set('x-extrator-empresa', empresa);
-      }
-    }
+    // Rotas publicas do portal resolvem a empresa pelo portal_token (lib central-token-map),
+    // nao pelo pathname. Admin continua usando cookie extrator_empresa abaixo.
     return NextResponse.next();
   }
   if (pathname.startsWith('/_next') || pathname === '/favicon.ico') return NextResponse.next();
