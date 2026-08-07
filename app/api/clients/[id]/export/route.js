@@ -1,21 +1,24 @@
-import { getClientById, getItemsByClientId, getTransactionsByClientId } from '@/lib/storage';
+import { getClientById, getItemsByClientId, getTransactionsByClientId } from '@/lib/storage-company';
+import { getCompanyPool, requireEmpresaFromHeader } from '@/lib/company-db';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(request, { params }) {
-  const { id } = await params;
-  const client = await getClientById(id);
-  if (!client) return new Response('Cliente não encontrado', { status: 404 });
-
-  const items = await getItemsByClientId(id);
-  if (items.length === 0) return new Response('Nenhuma conta bancária conectada', { status: 400 });
-
-  const { searchParams } = new URL(request.url);
-  const from = searchParams.get('from') || undefined;
-  const to = searchParams.get('to') || undefined;
-
   try {
-    const transactions = await getTransactionsByClientId(id, { from, to });
+    const empresa = requireEmpresaFromHeader(request);
+    const pool = await getCompanyPool(empresa);
+    const { id } = await params;
+    const client = await getClientById(pool, id);
+    if (!client) return new Response('Cliente não encontrado', { status: 404 });
+
+    const items = await getItemsByClientId(pool, id);
+    if (items.length === 0) return new Response('Nenhuma conta bancária conectada', { status: 400 });
+
+    const { searchParams } = new URL(request.url);
+    const from = searchParams.get('from') || undefined;
+    const to = searchParams.get('to') || undefined;
+
+    const transactions = await getTransactionsByClientId(pool, id, { from, to });
 
     const fmtDoc = (doc) => {
       if (!doc) return '';

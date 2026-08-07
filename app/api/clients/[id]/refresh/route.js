@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
-import { getClientById, getItemsByClientId, updateClient, updateItemStatus } from '@/lib/storage';
+import { getClientById, getItemsByClientId, updateClient, updateItemStatus } from '@/lib/storage-company';
+import { getCompanyPool, requireEmpresaFromHeader } from '@/lib/company-db';
 import { requestBusinessInstitutionData, requestPersonalInstitutionData, getActiveKlaviConsent } from '@/lib/klavi';
 import { syncItemData } from '@/lib/sync-processor';
 
@@ -12,10 +13,12 @@ export async function POST(request, { params }) {
   const itemId = searchParams.get('itemId') || null;
 
   try {
-    const client = await getClientById(id);
+    const empresa = requireEmpresaFromHeader(request);
+    const pool = await getCompanyPool(empresa);
+    const client = await getClientById(pool, id);
     if (!client) return NextResponse.json({ error: 'Cliente não encontrado' }, { status: 404 });
 
-    const items = await getItemsByClientId(id);
+    const items = await getItemsByClientId(pool, id);
     const toProcess = itemId ? items.filter(i => i.id === itemId) : items;
     const klaviItems = toProcess.filter(i => i.provider === 'klavi' || i.klaviLinkId);
 
@@ -25,7 +28,7 @@ export async function POST(request, { params }) {
       const itemCnpjs = [...new Set(klaviItems.map(i => i.businessTaxId).filter(Boolean))];
       if (itemCnpjs.length === 1) {
         clientBusinessTaxId = itemCnpjs[0];
-        await updateClient(id, { businessTaxId: clientBusinessTaxId });
+        await updateClient(pool, id, { businessTaxId: clientBusinessTaxId });
         console.log('[refresh] CNPJ do cliente preenchido a partir do item:', clientBusinessTaxId);
       } else if (itemCnpjs.length > 1) {
         return NextResponse.json({ error: 'Itens conectados usam CNPJs diferentes. Cadastre o CNPJ correto no cliente.' }, { status: 400 });
@@ -37,7 +40,7 @@ export async function POST(request, { params }) {
 
     const results = [];
 
-    console.log('[refresh] cliente=%s totalItens=%d itensKlavi=%d itemIdFilter=%s', client.name, items.length, klaviItems.length, itemId || 'nenhum');
+    console.log('[refresh] cliente=%s empresa=%s totalItens=%d itensKlavi=%d itemIdFilter=%s', client.name, empresa, items.length, klaviItems.length, itemId || 'nenhum');
     for (const item of klaviItems) {
       console.log('[refresh] processando item id=%s bank=%s provider=%s taxType=%s linkId=%s consentId=%s institutionCode=%s businessTaxId=%s',
         item.id, item.institutionName, item.provider, item.taxType, item.klaviLinkId, item.klaviConsentId, item.institutionCode, item.businessTaxId || client.businessTaxId);
@@ -66,7 +69,7 @@ export async function POST(request, { params }) {
       if (activeConsent.consentId && activeConsent.consentId !== item.klaviConsentId) consentUpdates.klaviConsentId = activeConsent.consentId;
       if (activeConsent.linkId && activeConsent.linkId !== item.klaviLinkId) consentUpdates.klaviLinkId = activeConsent.linkId;
       if (Object.keys(consentUpdates).length > 0) {
-        await updateItemStatus(item.id, consentUpdates);
+        await updateItemStatus(pool, item.id, consentUpdates);
         console.log('[refresh] item=%s atualizado com %j', item.id, consentUpdates);
       }
 
@@ -107,7 +110,7 @@ export async function POST(request, { params }) {
           await requestBusinessInstitutionData({ ...requestBody, businessTaxId: itemBusinessTaxId });
         }
 
-        await updateItemStatus(item.id, { status: 'UPDATING' });
+        await updateItemStatus(pool, item.id, { status: 'UPDATING' });
 
         results.push({
           itemId: item.id,
@@ -175,7 +178,7 @@ export async function POST(request, { params }) {
       }
     }
 
-    await updateClient(id, { lastSync: new Date().toISOString() });
+    await updateClient(pool, id, { lastSync: new Date().toISOString() });
 
     return NextResponse.json({ refreshed_at: new Date().toISOString(), results });
   } catch (error) {

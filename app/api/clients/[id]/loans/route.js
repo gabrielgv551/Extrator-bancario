@@ -1,11 +1,6 @@
 import { NextResponse } from 'next/server';
-import { getClientById } from '@/lib/storage';
-import pg from 'pg';
-
-const { Pool } = pg;
-function getPool() {
-  return new Pool({ connectionString: process.env.DATABASE_URL });
-}
+import { getClientById } from '@/lib/storage-company';
+import { getCompanyPool, requireEmpresaFromHeader } from '@/lib/company-db';
 
 export const dynamic = 'force-dynamic';
 
@@ -13,16 +8,16 @@ export async function GET(request, { params }) {
   const { id } = await params;
 
   try {
-    const client = await getClientById(id);
+    const empresa = requireEmpresaFromHeader(request);
+    const pool = await getCompanyPool(empresa);
+    const client = await getClientById(pool, id);
     if (!client) return NextResponse.json({ error: 'Cliente não encontrado' }, { status: 404 });
 
-    const pool = getPool();
-
-    // 1. Empréstimos da tabela debts (bancos que expõem conta LOAN)
+    // 1. Empréstimos da tabela extrator_debts (bancos que expõem conta LOAN)
     const { rows: debtRows } = await pool.query(
       `SELECT id, account_name AS name, type, balance, credit_limit AS creditLimit,
               synced_at AS syncedAt, 'debt_account' AS source
-       FROM debts WHERE client_id = $1`,
+       FROM extrator_debts WHERE client_id = $1`,
       [id]
     );
 
@@ -41,7 +36,7 @@ export async function GET(request, { params }) {
          MAX(date::date)       AS "ultimoDebito",
          institution_name      AS "institutionName",
          'transaction_derived' AS source
-       FROM transactions
+       FROM extrator_transactions
        WHERE client_id = $1
          AND description ~ '\\d+/\\d+'
          AND (description ILIKE '%PARCELA%' OR description ILIKE '%DEBITO SEGURO%'

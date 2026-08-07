@@ -1,22 +1,19 @@
 import { NextResponse } from 'next/server';
-import pg from 'pg';
-
-const { Pool } = pg;
-function getPool() {
-  return new Pool({ connectionString: process.env.DATABASE_URL });
-}
+import { getCompanyPool, requireEmpresaFromHeader } from '@/lib/company-db';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(request, { params }) {
   const { id } = await params;
-  const pool = getPool();
 
   try {
+    const empresa = requireEmpresaFromHeader(request);
+    const pool = await getCompanyPool(empresa);
+
     // Passo 1: verifica se existem transacoes com parcela no description
     const { rows: sample } = await pool.query(
       `SELECT description, amount, date
-       FROM transactions
+       FROM extrator_transactions
        WHERE client_id = $1
          AND (description ILIKE '%PARCELA%' OR description ILIKE '%DEBITO SEGURO%'
               OR description ILIKE '%FINANCIAMENTO%' OR description ILIKE '%PRESTACAO%')
@@ -27,7 +24,7 @@ export async function GET(request, { params }) {
     // Passo 2: verifica quais tem o padrao XX/XX
     const { rows: withPattern } = await pool.query(
       `SELECT description, amount, date
-       FROM transactions
+       FROM extrator_transactions
        WHERE client_id = $1
          AND description ~ '\\d+/\\d+'
        LIMIT 10`,
@@ -49,7 +46,7 @@ export async function GET(request, { params }) {
              (SUBSTRING(description FROM '\\d+/(\\d+)')::int
               - MAX(SUBSTRING(description FROM '(\\d+)/\\d+')::int)))::numeric, 2) AS saldo_estimado,
            pluggy_item_id
-         FROM transactions
+         FROM extrator_transactions
          WHERE client_id = $1
            AND description ~ '\\d+/\\d+'
            AND (description ILIKE '%PARCELA%' OR description ILIKE '%DEBITO SEGURO%'
@@ -65,9 +62,9 @@ export async function GET(request, { params }) {
       groupError = e.message;
     }
 
-    // Passo 4: o que já existe na tabela debts
+    // Passo 4: o que já existe na tabela extrator_debts
     const { rows: debts } = await pool.query(
-      `SELECT id, account_name, type, balance FROM debts WHERE client_id = $1`,
+      `SELECT id, account_name, type, balance FROM extrator_debts WHERE client_id = $1`,
       [id]
     );
 

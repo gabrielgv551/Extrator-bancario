@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
-import { getClientById, getTransactionsByClientId } from '@/lib/storage';
+import { getClientById, getTransactionsByClientId } from '@/lib/storage-company';
+import { getCompanyPool, requireEmpresaFromHeader } from '@/lib/company-db';
 
 export const dynamic = 'force-dynamic';
 
@@ -12,33 +13,39 @@ export async function GET(request, { params }) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const client = await getClientById(id);
-  if (!client) return NextResponse.json({ error: 'Cliente não encontrado' }, { status: 404 });
+  try {
+    const empresa = requireEmpresaFromHeader(request);
+    const pool = await getCompanyPool(empresa);
+    const client = await getClientById(pool, id);
+    if (!client) return NextResponse.json({ error: 'Cliente não encontrado' }, { status: 404 });
 
-  const { searchParams } = new URL(request.url);
-  const from = searchParams.get('from') || '2025-01-01';
-  const to = searchParams.get('to') || new Date().toISOString().split('T')[0];
+    const { searchParams } = new URL(request.url);
+    const from = searchParams.get('from') || '2025-01-01';
+    const to = searchParams.get('to') || new Date().toISOString().split('T')[0];
 
-  const transactions = await getTransactionsByClientId(id, { from, to });
+    const transactions = await getTransactionsByClientId(pool, id, { from, to });
 
-  const rows = transactions.map((tx) => ({
-    Data: new Date(tx.date).toLocaleDateString('pt-BR'),
-    Descrição: tx.description ?? '',
-    Tipo: tx.type === 'CREDIT' ? 'Entrada' : 'Saída',
-    'Valor (R$)': Number(tx.amount),
-    Saldo: tx.balance != null ? Number(tx.balance) : '',
-    'Categoria L1': tx.categoryL1 ?? '',
-    'Categoria L2': tx.categoryL2 ?? '',
-    'Categoria L3': tx.categoryL3 ?? '',
-    Conta: tx.accountName ?? '',
-    Status: tx.status ?? '',
-  }));
+    const rows = transactions.map((tx) => ({
+      Data: new Date(tx.date).toLocaleDateString('pt-BR'),
+      Descrição: tx.description ?? '',
+      Tipo: tx.type === 'CREDIT' ? 'Entrada' : 'Saída',
+      'Valor (R$)': Number(tx.amount),
+      Saldo: tx.balance != null ? Number(tx.balance) : '',
+      'Categoria L1': tx.categoryL1 ?? '',
+      'Categoria L2': tx.categoryL2 ?? '',
+      'Categoria L3': tx.categoryL3 ?? '',
+      Conta: tx.accountName ?? '',
+      Status: tx.status ?? '',
+    }));
 
-  return NextResponse.json({
-    client: client.name,
-    from,
-    to,
-    total: rows.length,
-    rows,
-  });
+    return NextResponse.json({
+      client: client.name,
+      from,
+      to,
+      total: rows.length,
+      rows,
+    });
+  } catch (error) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
 }

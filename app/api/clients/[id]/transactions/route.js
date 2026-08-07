@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
-import { getClientById, getItemsByClientId, getTransactionsByClientId, updateClient } from '@/lib/storage';
+import { getClientById, getItemsByClientId, getTransactionsByClientId, updateClient } from '@/lib/storage-company';
+import { getCompanyPool, requireEmpresaFromHeader } from '@/lib/company-db';
 import { isItemHealthy } from '@/lib/status';
 
 export const dynamic = 'force-dynamic';
@@ -13,10 +14,12 @@ export async function GET(request, { params }) {
 
   console.log('[tx] buscando transações locais id=%s from=%s to=%s', id, from, to);
   try {
-    const client = await getClientById(id);
+    const empresa = requireEmpresaFromHeader(request);
+    const pool = await getCompanyPool(empresa);
+    const client = await getClientById(pool, id);
     if (!client) return NextResponse.json({ error: 'Cliente não encontrado' }, { status: 404 });
 
-    const items = await getItemsByClientId(id);
+    const items = await getItemsByClientId(pool, id);
     const diagnostics = items.map(item => ({
       bank: item.institutionName,
       status: item.status || 'PENDING',
@@ -29,10 +32,10 @@ export async function GET(request, { params }) {
       provider: item.provider || 'pluggy',
     }));
 
-    const transactions = await getTransactionsByClientId(id, { from, to });
+    const transactions = await getTransactionsByClientId(pool, id, { from, to });
     transactions.sort((a, b) => new Date(b.date) - new Date(a.date));
 
-    await updateClient(id, { lastSync: new Date().toISOString() });
+    await updateClient(pool, id, { lastSync: new Date().toISOString() });
 
     return NextResponse.json({ transactions, total: transactions.length, diagnostics });
   } catch (error) {
