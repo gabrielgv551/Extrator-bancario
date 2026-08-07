@@ -2,7 +2,8 @@ import { NextResponse } from 'next/server';
 import {
   getClients, getItemsByClientId, updateClient,
   upsertTransactions, upsertCreditTransactions,
-} from '@/lib/storage';
+} from '@/lib/storage-company';
+import { forEachCompany } from '@/lib/company-db';
 import { getAllTransactions } from '@/lib/pluggy';
 
 export const dynamic = 'force-dynamic';
@@ -22,40 +23,45 @@ export async function GET(request) {
   const to   = searchParams.get('to')   || new Date().toISOString().split('T')[0];
   const filterClientId = searchParams.get('clientId') || null;
 
-  let clients = await getClients();
-  if (filterClientId) clients = clients.filter(c => c.id === filterClientId);
+  const companyResults = await forEachCompany(async ({ empresa, pool }) => {
+    let clients = await getClients(pool);
+    if (filterClientId) clients = clients.filter(c => c.id === filterClientId);
 
-  const results = [];
+    const results = [];
 
-  for (const client of clients) {
-    const items = await getItemsByClientId(client.id);
-    if (items.length === 0) continue;
+    for (const client of clients) {
+      const items = await getItemsByClientId(pool, client.id);
+      if (items.length === 0) continue;
 
-    for (const item of items) {
-      try {
-        const allTx = (await getAllTransactions(item.pluggyItemId, { from, to }))
-          .map(tx => ({ ...tx, institutionName: item.institutionName ?? null }));
+      for (const item of items) {
+        try {
+          const allTx = (await getAllTransactions(item.pluggyItemId, { from, to }))
+            .map(tx => ({ ...tx, institutionName: item.institutionName ?? null }));
 
-        const bankTx   = allTx.filter(tx => tx.accountType !== 'CREDIT');
-        const creditTx = allTx.filter(tx => tx.accountType === 'CREDIT');
+          const bankTx   = allTx.filter(tx => tx.accountType !== 'CREDIT');
+          const creditTx = allTx.filter(tx => tx.accountType === 'CREDIT');
 
-        const savedBank   = await upsertTransactions(client.id, client.name, item.pluggyItemId, bankTx);
-        const savedCredit = await upsertCreditTransactions(client.id, client.name, item.pluggyItemId, creditTx);
+          const savedBank   = await upsertTransactions(pool, client.id, client.name, item.pluggyItemId, bankTx);
+          const savedCredit = await upsertCreditTransactions(pool, client.id, client.name, item.pluggyItemId, creditTx);
 
-        results.push({
-          client: client.name,
-          bank: item.institutionName,
-          from, to,
-          synced: { bank: savedBank, credit: savedCredit },
-          status: 'ok',
-        });
-      } catch (err) {
-        results.push({ client: client.name, bank: item.institutionName, status: 'error', message: err.message });
+          results.push({
+            empresa,
+            client: client.name,
+            bank: item.institutionName,
+            from, to,
+            synced: { bank: savedBank, credit: savedCredit },
+            status: 'ok',
+          });
+        } catch (err) {
+          results.push({ empresa, client: client.name, bank: item.institutionName, status: 'error', message: err.message });
+        }
       }
+
+      await updateClient(pool, client.id, { lastSync: new Date().toISOString() });
     }
 
-    await updateClient(client.id, { lastSync: new Date().toISOString() });
-  }
+    return { empresa, results };
+  });
 
-  return NextResponse.json({ synced_at: new Date().toISOString(), results });
+  return NextResponse.json({ synced_at: new Date().toISOString(), companies: companyResults });
 }

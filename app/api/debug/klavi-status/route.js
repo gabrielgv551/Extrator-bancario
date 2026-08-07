@@ -1,23 +1,26 @@
 import { NextResponse } from 'next/server';
-import { getClientById, getItemsByClientId, getWebhookEventsForItem } from '@/lib/storage';
+import { getClientById, getItemsByClientId, getWebhookEventsForItem } from '@/lib/storage-company';
+import { getCompanyPool, requireEmpresaFromHeader } from '@/lib/company-db';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(request) {
   try {
+    const empresa = requireEmpresaFromHeader(request);
+    const pool = await getCompanyPool(empresa);
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
     if (!id) return NextResponse.json({ error: 'Informe o id do cliente' }, { status: 400 });
 
-    const client = await getClientById(id);
+    const client = await getClientById(pool, id);
     if (!client) return NextResponse.json({ error: 'Cliente não encontrado' }, { status: 404 });
 
-    const items = await getItemsByClientId(id);
+    const items = await getItemsByClientId(pool, id);
     const klaviItems = items.filter(i => i.provider === 'klavi' || i.klaviLinkId);
 
     const events = [];
     for (const item of klaviItems) {
-      const itemEvents = await getWebhookEventsForItem({
+      const itemEvents = await getWebhookEventsForItem(pool, {
         itemId: item.id,
         linkId: item.klaviLinkId,
         consentId: item.klaviConsentId,

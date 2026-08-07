@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
-import { getItemById } from '@/lib/storage';
+import { getItemById } from '@/lib/storage-company';
+import { getCompanyPool, requireEmpresaFromHeader } from '@/lib/company-db';
 import { requestBusinessInstitutionData } from '@/lib/klavi';
 
 export const dynamic = 'force-dynamic';
@@ -11,14 +12,16 @@ const DEFAULT_PRODUCTS = ['pj_categorized_checking_l3'];
 
 export async function POST(request) {
   try {
+    const empresa = requireEmpresaFromHeader(request);
+    const pool = await getCompanyPool(empresa);
     const body = await request.json().catch(() => ({}));
     const { itemId } = body;
-    console.log('[debug klavi-request-data] itemId recebido:', itemId, 'tipo:', typeof itemId);
+    console.log('[debug klavi-request-data] empresa=%s itemId recebido:', empresa, itemId, 'tipo:', typeof itemId);
     if (!itemId) return NextResponse.json({ error: 'Informe itemId' }, { status: 400 });
 
     let item;
     try {
-      item = await getItemById(itemId);
+      item = await getItemById(pool, itemId);
     } catch (dbErr) {
       console.error('[debug klavi-request-data] erro ao buscar item:', dbErr);
       return NextResponse.json({ error: 'Erro ao buscar item no banco', detail: dbErr.message }, { status: 500 });

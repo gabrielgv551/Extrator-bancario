@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getClientByToken, getItemsByClientId, addItem, addKlaviItem } from '@/lib/storage-company';
-import { getEmpresaByToken } from '@/lib/central-token-map';
+import { getEmpresaByToken, registerItemLocation } from '@/lib/central-token-map';
 import { getCompanyPool } from '@/lib/company-db';
 import { getItem, getAccounts } from '@/lib/pluggy';
 import { v4 as uuidv4 } from 'uuid';
@@ -13,7 +13,7 @@ async function resolveClient(token) {
   const pool = await getCompanyPool(empresa);
   const client = await getClientByToken(pool, token);
   if (!client) return null;
-  return { pool, client };
+  return { empresa, pool, client };
 }
 
 export async function GET(_, { params }) {
@@ -31,15 +31,16 @@ export async function POST(request, { params }) {
   const resolved = await resolveClient(token);
   if (!resolved) return NextResponse.json({ error: 'Portal não encontrado' }, { status: 404 });
 
-  const { pool, client } = resolved;
+  const { empresa, pool, client } = resolved;
 
   try {
     const body = await request.json().catch(() => ({}));
 
     // Fluxo Klavi
     if (body.klaviLinkId || body.klaviConsentId) {
+      const itemId = uuidv4();
       const item = await addKlaviItem(pool, {
-        id: uuidv4(),
+        id: itemId,
         clientId: client.id,
         klaviLinkId: body.klaviLinkId || null,
         klaviConsentId: body.klaviConsentId || null,
@@ -52,6 +53,12 @@ export async function POST(request, { params }) {
         taxType: body.taxType || null,
         status: body.status || 'WAITING_DATA',
       });
+      await registerItemLocation(empresa, {
+        itemId,
+        clientId: client.id,
+        klaviLinkId: body.klaviLinkId || null,
+        klaviConsentId: body.klaviConsentId || null,
+      }).catch(err => console.error('[portal/items] falha ao registrar item location:', err.message));
       return NextResponse.json(item, { status: 201 });
     }
 
@@ -70,14 +77,20 @@ export async function POST(request, { params }) {
     const unique = [...new Set(nums)];
     const accountNumbers = unique.length > 0 ? unique.join(', ') : null;
 
+    const itemId = uuidv4();
     const item = await addItem(pool, {
-      id: uuidv4(),
+      id: itemId,
       clientId: client.id,
       pluggyItemId,
       institutionName,
       institutionLogo,
       accountNumbers,
     });
+    await registerItemLocation(empresa, {
+      itemId,
+      clientId: client.id,
+      pluggyItemId,
+    }).catch(err => console.error('[portal/items] falha ao registrar item location:', err.message));
     return NextResponse.json(item, { status: 201 });
   } catch (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });

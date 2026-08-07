@@ -2,7 +2,9 @@ import { NextResponse } from 'next/server';
 import {
   getItemByPluggyId, updateItemStatus, recordWebhookEvent, hasWebhookEvent,
   softDeleteItem, markItemNotified, getClientById, deleteTransactionsByIds,
-} from '@/lib/storage';
+} from '@/lib/storage-company';
+import { getEmpresaByItem } from '@/lib/central-token-map';
+import { getCompanyPool } from '@/lib/company-db';
 import { getItem } from '@/lib/pluggy';
 import { buildItemStatusUpdates, isItemHealthy } from '@/lib/status';
 import { syncItemData, syncTransactionsFromCreatedLink } from '@/lib/sync-processor';
@@ -27,11 +29,11 @@ function isAuthorized(request) {
   return pluggySecret === secret;
 }
 
-async function persistItemStatusByPluggyId(pluggyItemId, pluggyItem, { forceError = false } = {}) {
-  const localItem = await getItemByPluggyId(pluggyItemId);
+async function persistItemStatusByPluggyId(pool, pluggyItemId, pluggyItem, { forceError = false } = {}) {
+  const localItem = await getItemByPluggyId(pool, pluggyItemId);
   if (!localItem) return null;
   const updates = buildItemStatusUpdates(pluggyItem, { forceError });
-  await updateItemStatus(localItem.id, updates);
+  await updateItemStatus(pool, localItem.id, updates);
   return localItem;
 }
 
@@ -40,7 +42,7 @@ function scheduleAsync(promise, label) {
   promise.catch(err => console.error(`[webhook] erro em ${label}:`, err));
 }
 
-async function handleItemUpdated(itemId) {
+async function handleItemUpdated(pool, itemId) {
   let pluggyItem;
   try {
     pluggyItem = await getItem(itemId);
@@ -49,32 +51,32 @@ async function handleItemUpdated(itemId) {
     return;
   }
 
-  const localItem = await persistItemStatusByPluggyId(itemId, pluggyItem);
+  const localItem = await persistItemStatusByPluggyId(pool, itemId, pluggyItem);
   if (!localItem) return;
 
   if (isItemHealthy(pluggyItem?.status)) {
     // Sincroniza dados em background após item/updated de sucesso.
-    scheduleAsync(syncItemData(localItem, { skipIfNotHealthy: true }), `syncItemData ${itemId}`);
+    scheduleAsync(syncItemData(localItem, { skipIfNotHealthy: true, pool }), `syncItemData ${itemId}`);
   }
 }
 
-async function handleItemDeleted(itemId) {
-  const localItem = await getItemByPluggyId(itemId, { includeDeleted: true });
+async function handleItemDeleted(pool, itemId) {
+  const localItem = await getItemByPluggyId(pool, itemId, { includeDeleted: true });
   if (localItem && !localItem.deletedAt) {
-    await softDeleteItem(localItem.id);
+    await softDeleteItem(pool, localItem.id);
     console.log('[webhook] item marcado como deletado localmente:', itemId);
   }
 }
 
-async function handleTransactionsCreated(itemId, payload) {
-  const localItem = await getItemByPluggyId(itemId);
+async function handleTransactionsCreated(pool, itemId, payload) {
+  const localItem = await getItemByPluggyId(pool, itemId);
   if (!localItem) return;
 
   // Sempre atualiza o status do item para garantir consistência.
   let pluggyItem;
   try {
     pluggyItem = await getItem(itemId);
-    await updateItemStatus(localItem.id, buildItemStatusUpdates(pluggyItem));
+    await updateItemStatus(pool, localItem.id, buildItemStatusUpdates(pluggyItem));
   } catch (err) {
     console.warn('[webhook] falha ao buscar item para transactions/created:', err.message);
   }
@@ -84,14 +86,15 @@ async function handleTransactionsCreated(itemId, payload) {
       syncTransactionsFromCreatedLink(localItem, {
         accountId: payload.accountId || null,
         createdAtFrom: payload.createdAtFrom || null,
+        pool,
       }),
       `syncTransactionsFromCreatedLink ${itemId}`
     );
   }
 }
 
-async function handleTransactionsUpdated(itemId, payload) {
-  const localItem = await getItemByPluggyId(itemId);
+async function handleTransactionsUpdated(pool, itemId, payload) {
+  const localItem = await getItemByPluggyId(pool, itemId);
   if (!localItem) return;
 
   // Para transações atualizadas, fazemos um sync curto dos últimos 7 dias.
@@ -99,20 +102,20 @@ async function handleTransactionsUpdated(itemId, payload) {
   const to = new Date().toISOString().split('T')[0];
 
   scheduleAsync(
-    syncItemData(localItem, { fromOverride: sevenDaysAgo, toOverride: to, skipIfNotHealthy: true }),
+    syncItemData(localItem, { fromOverride: sevenDaysAgo, toOverride: to, skipIfNotHealthy: true, pool }),
     `syncItemData updated ${itemId}`
   );
 }
 
-async function handleTransactionsDeleted(itemId, payload) {
+async function handleTransactionsDeleted(pool, itemId, payload) {
   const transactionIds = payload.transactionIds;
   if (!Array.isArray(transactionIds) || transactionIds.length === 0) return;
   // A função deleteTransactionsByIds já remove de transactions e credit_transactions.
-  await deleteTransactionsByIds(transactionIds);
+  await deleteTransactionsByIds(pool, transactionIds);
   console.log('[webhook] transações removidas:', transactionIds.length);
 }
 
-async function maybeNotifyReconnection(localItem) {
+async function maybeNotifyReconnection(pool, localItem) {
   if (!localItem) return;
   const alreadyNotified = localItem.notificationSentAt &&
     new Date(localItem.notificationSentAt).getTime() > Date.now() - 24 * 60 * 60 * 1000;
@@ -120,9 +123,9 @@ async function maybeNotifyReconnection(localItem) {
 
   // Aqui pode ser inserido envio real de e-mail/SMS/WhatsApp no futuro.
   // Por enquanto, marcamos que a notificação foi "enviada" para evitar spam.
-  await markItemNotified(localItem.id);
+  await markItemNotified(pool, localItem.id);
 
-  const client = await getClientById(localItem.clientId).catch(() => null);
+  const client = await getClientById(pool, localItem.clientId).catch(() => null);
   console.log('[webhook] notificação de reconexão registrada para cliente=%s item=%s', client?.name || localItem.clientId, localItem.pluggyItemId);
 }
 
@@ -146,57 +149,72 @@ export async function POST(request) {
     return NextResponse.json({ error: 'event/itemId obrigatórios' }, { status: 400 });
   }
 
+  // Resolve empresa pelo pluggy_item_id.
+  const empresa = await getEmpresaByItem({ pluggyItemId: itemId });
+  if (!empresa) {
+    console.warn('[webhook] não foi possível resolver empresa para pluggyItemId=%s', itemId);
+    return NextResponse.json({ received: true, unresolved: true });
+  }
+
+  let pool;
+  try {
+    pool = await getCompanyPool(empresa);
+  } catch (err) {
+    console.error('[webhook] erro ao conectar no pool da empresa %s:', empresa, err.message);
+    return NextResponse.json({ error: 'Erro ao conectar no banco da empresa' }, { status: 500 });
+  }
+
   // Idempotência: ignora eventos já processados.
-  if (eventId && await hasWebhookEvent(eventId)) {
+  if (eventId && await hasWebhookEvent(pool, eventId)) {
     return NextResponse.json({ received: true, duplicate: true });
   }
-  await recordWebhookEvent({ eventId, event, itemId, payload });
+  await recordWebhookEvent(pool, { eventId, event, itemId, payload });
 
-  console.log('[webhook] event=%s itemId=%s eventId=%s', event, itemId, eventId);
+  console.log('[webhook] empresa=%s event=%s itemId=%s eventId=%s', empresa, event, itemId, eventId);
 
   try {
     switch (event) {
       case 'item/created':
       case 'item/login_succeeded': {
         const pluggyItem = await getItem(itemId).catch(() => null);
-        await persistItemStatusByPluggyId(itemId, pluggyItem);
+        await persistItemStatusByPluggyId(pool, itemId, pluggyItem);
         break;
       }
       case 'item/updated': {
-        scheduleAsync(handleItemUpdated(itemId), `item/updated ${itemId}`);
+        scheduleAsync(handleItemUpdated(pool, itemId), `item/updated ${itemId}`);
         break;
       }
       case 'item/error':
       case 'item/login_error': {
-        const localItem = await persistItemStatusByPluggyId(itemId, null, { forceError: true });
+        const localItem = await persistItemStatusByPluggyId(pool, itemId, null, { forceError: true });
         if (localItem) {
-          scheduleAsync(maybeNotifyReconnection(localItem), `notify ${itemId}`);
+          scheduleAsync(maybeNotifyReconnection(pool, localItem), `notify ${itemId}`);
         }
         break;
       }
       case 'item/waiting_user_input':
       case 'item/waiting_user_action': {
         const pluggyItem = await getItem(itemId).catch(() => null);
-        const localItem = await persistItemStatusByPluggyId(itemId, pluggyItem);
+        const localItem = await persistItemStatusByPluggyId(pool, itemId, pluggyItem);
         if (localItem) {
-          scheduleAsync(maybeNotifyReconnection(localItem), `notify waiting ${itemId}`);
+          scheduleAsync(maybeNotifyReconnection(pool, localItem), `notify waiting ${itemId}`);
         }
         break;
       }
       case 'item/deleted': {
-        await handleItemDeleted(itemId);
+        await handleItemDeleted(pool, itemId);
         break;
       }
       case 'transactions/created': {
-        scheduleAsync(handleTransactionsCreated(itemId, payload), `transactions/created ${itemId}`);
+        scheduleAsync(handleTransactionsCreated(pool, itemId, payload), `transactions/created ${itemId}`);
         break;
       }
       case 'transactions/updated': {
-        scheduleAsync(handleTransactionsUpdated(itemId, payload), `transactions/updated ${itemId}`);
+        scheduleAsync(handleTransactionsUpdated(pool, itemId, payload), `transactions/updated ${itemId}`);
         break;
       }
       case 'transactions/deleted': {
-        scheduleAsync(handleTransactionsDeleted(itemId, payload), `transactions/deleted ${itemId}`);
+        scheduleAsync(handleTransactionsDeleted(pool, itemId, payload), `transactions/deleted ${itemId}`);
         break;
       }
       case 'connector/status_updated': {

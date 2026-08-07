@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
-import { getItemById } from '@/lib/storage';
+import { getItemById } from '@/lib/storage-company';
+import { getCompanyPool, requireEmpresaFromHeader } from '@/lib/company-db';
 import { requestBusinessInstitutionData, requestPersonalInstitutionData } from '@/lib/klavi';
 
 export const dynamic = 'force-dynamic';
@@ -86,12 +87,14 @@ export async function POST(request) {
   }
 
   try {
+    const empresa = requireEmpresaFromHeader(request);
+    const pool = await getCompanyPool(empresa);
     const body = await request.json().catch(() => ({}));
     const { itemId, products, mode = 'business' } = body;
 
     if (!itemId) return NextResponse.json({ error: 'Informe itemId' }, { status: 400 });
 
-    const item = await getItemById(itemId);
+    const item = await getItemById(pool, itemId);
     if (!item) return NextResponse.json({ error: 'Item não encontrado' }, { status: 404 });
 
     const isBusiness = mode === 'business';

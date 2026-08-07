@@ -5,7 +5,9 @@ import {
   upsertTransactionsBatch, upsertCreditTransactionsBatch,
   upsertInvestments, upsertDebts, upsertDerivedDebts,
   softDeleteItem, markItemNotified,
-} from '@/lib/storage';
+} from '@/lib/storage-company';
+import { getEmpresaByItem } from '@/lib/central-token-map';
+import { getCompanyPool } from '@/lib/company-db';
 import { mapKlaviReportToLocal, normalizeKlaviStatus, isKlaviConsentAuthorised, isKlaviConsentRejected } from '@/lib/klavi';
 import { buildItemStatusUpdates } from '@/lib/status';
 
@@ -42,19 +44,19 @@ function extractReportMetadata(payload) {
   return { report, productName, productReportId, linkId, consentId, institutionCode, event, eventId };
 }
 
-async function findLocalItem({ linkId, consentId }) {
+async function findLocalItem(pool, { linkId, consentId }) {
   if (consentId) {
-    const item = await getItemByKlaviConsentId(consentId, { includeDeleted: true });
+    const item = await getItemByKlaviConsentId(pool, consentId, { includeDeleted: true });
     if (item) return item;
   }
   if (linkId) {
-    const item = await getItemByKlaviLinkId(linkId, { includeDeleted: true });
+    const item = await getItemByKlaviLinkId(pool, linkId, { includeDeleted: true });
     if (item) return item;
   }
   return null;
 }
 
-async function persistReport(localItem, payload) {
+async function persistReport(pool, localItem, payload) {
   const { report, productName, institutionCode } = extractReportMetadata(payload);
   if (!report || !productName) {
     console.warn('[klavi webhook] payload não reconhecido como relatório:', Object.keys(payload));
@@ -74,23 +76,23 @@ async function persistReport(localItem, payload) {
   }
 
   const institutionName = localItem?.institutionName || report?.checkingAccounts?.[0]?.brandName || report?.creditCardAccounts?.[0]?.brandName || 'Banco';
-  const client = await getClientById(localItem.clientId).catch(() => null);
+  const client = await getClientById(pool, localItem.clientId).catch(() => null);
   const clientName = client?.name || localItem?.clientName || null;
   const mapped = mapKlaviReportToLocal({ productName, report, institutionCode, institutionName });
 
   const savedBank = mapped.bankTransactions.length
-    ? await upsertTransactionsBatch(localItem.clientId, clientName, localItem.id, mapped.bankTransactions)
+    ? await upsertTransactionsBatch(pool, localItem.clientId, clientName, localItem.id, mapped.bankTransactions)
     : 0;
   const savedCredit = mapped.creditTransactions.length
-    ? await upsertCreditTransactionsBatch(localItem.clientId, clientName, localItem.id, mapped.creditTransactions)
+    ? await upsertCreditTransactionsBatch(pool, localItem.clientId, clientName, localItem.id, mapped.creditTransactions)
     : 0;
   const savedInv = mapped.investments.length
-    ? await upsertInvestments(localItem.clientId, localItem.id, mapped.investments)
+    ? await upsertInvestments(pool, localItem.clientId, localItem.id, mapped.investments)
     : 0;
   const savedDebts = mapped.debts.length
-    ? await upsertDebts(localItem.clientId, localItem.id, mapped.debts)
+    ? await upsertDebts(pool, localItem.clientId, localItem.id, mapped.debts)
     : 0;
-  await upsertDerivedDebts(localItem.clientId).catch(() => {});
+  await upsertDerivedDebts(pool, localItem.clientId).catch(() => {});
 
   console.log('[klavi webhook] relatório persistido item=%s product=%s bank=%d credit=%d inv=%d debts=%d',
     localItem.id, productName, savedBank, savedCredit, savedInv, savedDebts);
@@ -99,11 +101,11 @@ async function persistReport(localItem, payload) {
   const accountNumbers = mapped.accounts.map(a => a.number).filter(Boolean);
   const uniqueAccountNumbers = [...new Set(accountNumbers)].join(', ');
   if (uniqueAccountNumbers) {
-    await updateItemStatus(localItem.id, { accountNumbers: uniqueAccountNumbers || null }).catch(() => {});
+    await updateItemStatus(pool, localItem.id, { accountNumbers: uniqueAccountNumbers || null }).catch(() => {});
   }
 }
 
-async function updateItemStatusFromPayload(localItem, payload) {
+async function updateItemStatusFromPayload(pool, localItem, payload) {
   const { event, report } = extractReportMetadata(payload);
   const consentStatus = payload?.consentStatus || payload?.status || payload?.consent_status || null;
   const norm = normalizeKlaviStatus(report, consentStatus);
@@ -123,20 +125,20 @@ async function updateItemStatusFromPayload(localItem, payload) {
     updates.lastUpdatedAt = new Date().toISOString();
   }
 
-  await updateItemStatus(localItem.id, updates);
+  await updateItemStatus(pool, localItem.id, updates);
 
   if (updates.requiresReconnect) {
-    scheduleAsync(maybeNotifyReconnection(localItem), `notify ${localItem.id}`);
+    scheduleAsync(maybeNotifyReconnection(pool, localItem), `notify ${localItem.id}`);
   }
 }
 
-async function maybeNotifyReconnection(localItem) {
+async function maybeNotifyReconnection(pool, localItem) {
   if (!localItem) return;
   const alreadyNotified = localItem.notificationSentAt &&
     new Date(localItem.notificationSentAt).getTime() > Date.now() - 24 * 60 * 60 * 1000;
   if (alreadyNotified) return;
-  await markItemNotified(localItem.id);
-  const client = await getClientById(localItem.clientId).catch(() => null);
+  await markItemNotified(pool, localItem.id);
+  const client = await getClientById(pool, localItem.clientId).catch(() => null);
   console.log('[klavi webhook] notificação de reconexão registrada para cliente=%s item=%s', client?.name || localItem.clientId, localItem.id);
 }
 
@@ -162,8 +164,24 @@ export async function POST(request) {
 
   const { event, eventId, linkId, consentId } = extractReportMetadata(payload);
 
+  // Resolve empresa pelo item identificado no webhook.
+  const empresa = await getEmpresaByItem({ klaviLinkId: linkId, klaviConsentId: consentId });
+  if (!empresa) {
+    console.warn('[klavi webhook] não foi possível resolver empresa para linkId=%s consentId=%s', linkId, consentId);
+    // Retorna 200 para não fazer a Klavi reenviar; mas não processamos.
+    return NextResponse.json({ received: true, unresolved: true });
+  }
+
+  let pool;
+  try {
+    pool = await getCompanyPool(empresa);
+  } catch (err) {
+    console.error('[klavi webhook] erro ao conectar no pool da empresa %s:', empresa, err.message);
+    return NextResponse.json({ error: 'Erro ao conectar no banco da empresa' }, { status: 500 });
+  }
+
   // Salva payload bruto para debug (não afeta idempotência).
-  await recordKlaviWebhookDebug({ eventId, event, linkId, consentId, payload });
+  await recordKlaviWebhookDebug(pool, { eventId, event, linkId, consentId, payload });
 
   // Payloads de teste de conectividade da Klavi costumam não ter event/eventId.
   // Aceitamos e retornamos 200 para não quebrar o teste.
@@ -173,30 +191,30 @@ export async function POST(request) {
   }
 
   // Idempotência: ignora eventos já processados.
-  if (eventId && await hasWebhookEvent(eventId)) {
+  if (eventId && await hasWebhookEvent(pool, eventId)) {
     return NextResponse.json({ received: true, duplicate: true });
   }
-  await recordWebhookEvent({ eventId, event, itemId: linkId || consentId, payload });
+  await recordWebhookEvent(pool, { eventId, event, itemId: linkId || consentId, payload });
 
-  console.log('[klavi webhook] event=%s eventId=%s linkId=%s consentId=%s', event, eventId, linkId, consentId);
+  console.log('[klavi webhook] empresa=%s event=%s eventId=%s linkId=%s consentId=%s', empresa, event, eventId, linkId, consentId);
 
-  const localItem = await findLocalItem({ linkId, consentId });
+  const localItem = await findLocalItem(pool, { linkId, consentId });
 
   try {
     const eventLower = String(event || '').toLowerCase();
 
     if (eventLower.includes('consent')) {
       if (localItem) {
-        await updateItemStatusFromPayload(localItem, payload);
+        await updateItemStatusFromPayload(pool, localItem, payload);
         if (isKlaviConsentAuthorised(payload?.consentStatus || payload?.status)) {
           // Consentimento autorizado: solicitação de relatório já deve ter sido feita no callback.
           // Se o webhook vier com dados completos, persistimos.
           if (payload?.report || payload?.checkingAccounts || payload?.creditCardAccounts) {
-            scheduleAsync(persistReport(localItem, payload), `persistReport ${localItem.id}`);
+            scheduleAsync(persistReport(pool, localItem, payload), `persistReport ${localItem.id}`);
           }
         }
         if (isKlaviConsentRejected(payload?.consentStatus || payload?.status)) {
-          await updateItemStatus(localItem.id, { requiresReconnect: true });
+          await updateItemStatus(pool, localItem.id, { requiresReconnect: true });
         }
       }
     } else if (eventLower.includes('report') || payload?.productName || payload?.report) {
@@ -204,8 +222,8 @@ export async function POST(request) {
       if (localItem) {
         scheduleAsync(
           (async () => {
-            await persistReport(localItem, payload);
-            await updateItemStatusFromPayload(localItem, payload);
+            await persistReport(pool, localItem, payload);
+            await updateItemStatusFromPayload(pool, localItem, payload);
           })(),
           `report ${eventId}`
         );

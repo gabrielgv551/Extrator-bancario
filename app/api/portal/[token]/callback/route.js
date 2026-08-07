@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getClientByToken, addKlaviItem, getItemByKlaviLinkId, updateItemStatus } from '@/lib/storage-company';
-import { getEmpresaByToken } from '@/lib/central-token-map';
+import { getEmpresaByToken, registerItemLocation } from '@/lib/central-token-map';
 import { getCompanyPool } from '@/lib/company-db';
 import { requestBusinessInstitutionData } from '@/lib/klavi';
 import { v4 as uuidv4 } from 'uuid';
@@ -48,8 +48,9 @@ export async function GET(request, { params }) {
     // O item pode já ter sido criado pelo portal antes do redirect; se não, criamos um placeholder.
     let item = await getItemByKlaviLinkId(pool, linkId);
     if (!item) {
+      const itemId = uuidv4();
       item = await addKlaviItem(pool, {
-        id: uuidv4(),
+        id: itemId,
         clientId: client.id,
         klaviLinkId: linkId,
         klaviConsentId: null,
@@ -60,6 +61,11 @@ export async function GET(request, { params }) {
         businessTaxId: null,
         status: 'WAITING_DATA',
       });
+      await registerItemLocation(empresa, {
+        itemId,
+        clientId: client.id,
+        klaviLinkId: linkId,
+      }).catch(err => console.error('[portal/callback] falha ao registrar item location:', err.message));
     }
 
     // Solicita relatório. O webhook de consent/authorised também pode disparar, mas
