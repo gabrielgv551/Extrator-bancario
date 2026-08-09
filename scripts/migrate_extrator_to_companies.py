@@ -126,16 +126,28 @@ def get_company_config_from_central(conn, slug):
 
 def connect_company(central_conn, slug):
     cfg = get_company_config_from_central(central_conn, slug)
-    if not cfg or not cfg.get('dbname'):
-        central = get_central_config()
-        cfg = {
-            'host': central['host'],
-            'port': central['port'],
-            'dbname': f"have_{slug.lower().strip()}",
-            'user': central['user'],
-            'password': central['password'],
-        }
-    return psycopg2.connect(**cfg)
+    if cfg and cfg.get('dbname'):
+        return psycopg2.connect(**cfg)
+
+    central = get_central_config()
+    candidates = [
+        f"have_{slug.lower().strip()}",
+        slug.lower().strip(),
+        slug.strip(),
+    ]
+    last_error = None
+    for dbname in candidates:
+        try:
+            return psycopg2.connect(
+                host=central['host'],
+                port=central['port'],
+                dbname=dbname,
+                user=central['user'],
+                password=central['password'],
+            )
+        except Exception as e:
+            last_error = e
+    raise last_error or Exception(f'Nao foi possivel conectar ao banco da empresa {slug}')
 
 
 def list_active_companies(conn):
@@ -174,16 +186,26 @@ def ensure_central_token_map(conn):
     conn.commit()
 
 
-def migrate_table(src_cur, dst_cur, src_sql, src_params, dst_insert_sql, label):
+def migrate_table(src_cur, dst_cur, src_sql, src_params, dst_insert_sql, label, batch_size=200):
     src_cur.execute(src_sql, src_params)
     rows = src_cur.fetchall()
     if not rows:
         print(f'  [OK] {label}: nenhum registro para migrar')
         return 0
-    for row in rows:
-        dst_cur.execute(dst_insert_sql, row)
-    print(f'  [OK] {label}: {len(rows)} registros migrados')
-    return len(rows)
+
+    cols = dst_insert_sql.count('%s')
+    single_values = f"VALUES ({','.join(['%s'] * cols)})"
+    total = 0
+    for i in range(0, len(rows), batch_size):
+        chunk = rows[i:i + batch_size]
+        values_sql = ','.join([f"({','.join(['%s'] * cols)})" for _ in chunk])
+        sql = dst_insert_sql.replace(single_values, f"VALUES {values_sql}", 1)
+        params = [v for row in chunk for v in row]
+        dst_cur.execute(sql, params)
+        total += len(chunk)
+
+    print(f'  [OK] {label}: {total} registros migrados')
+    return total
 
 
 def migrate_company(central_conn, legacy_conn, slug):
