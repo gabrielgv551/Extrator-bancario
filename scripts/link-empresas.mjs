@@ -38,7 +38,7 @@ async function migrar() {
     ALTER TABLE clients ADD COLUMN IF NOT EXISTS gestor_empresa VARCHAR(50)
   `);
   await pool.query(`
-    CREATE UNIQUE INDEX IF NOT EXISTS idx_clients_gestor_empresa
+    CREATE INDEX IF NOT EXISTS idx_clients_gestor_empresa
     ON clients(gestor_empresa) WHERE gestor_empresa IS NOT NULL
   `);
 }
