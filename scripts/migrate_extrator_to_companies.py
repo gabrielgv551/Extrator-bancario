@@ -32,12 +32,12 @@ def get_env(key, fallback=None):
 def parse_database_url(url):
     if not url:
         return None
-    from urllib.parse import urlparse
+    from urllib.parse import urlparse, unquote
     u = urlparse(url)
     return {
         'host': u.hostname,
         'port': u.port or 5432,
-        'dbname': u.path.lstrip('/'),
+        'dbname': unquote(u.path.lstrip('/')),
         'user': u.username,
         'password': u.password,
     }
@@ -167,8 +167,8 @@ def ensure_central_token_map(conn):
     conn.commit()
 
 
-def migrate_table(src_cur, dst_cur, src_sql, dst_insert_sql, label):
-    src_cur.execute(src_sql)
+def migrate_table(src_cur, dst_cur, src_sql, src_params, dst_insert_sql, label):
+    src_cur.execute(src_sql, src_params)
     rows = src_cur.fetchall()
     if not rows:
         print(f'  [OK] {label}: nenhum registro para migrar')
@@ -303,6 +303,7 @@ def migrate_company(central_conn, legacy_conn, slug):
             migrate_table(
                 legacy_cur, company_cur,
                 f"SELECT id, client_id, client_name, pluggy_item_id, date, description, type, amount, balance, category, category_l1, category_l2, category_l3, account_name, account_number, account_type, institution_name, counterparty_name, counterparty_document, status, date_transacted, synced_at FROM transactions WHERE client_id IN ({placeholders})",
+                client_ids,
                 """
                 INSERT INTO extrator_transactions
                   (id, client_id, client_name, pluggy_item_id, date, description, type, amount, balance, category, category_l1, category_l2, category_l3, account_name, account_number, account_type, institution_name, counterparty_name, counterparty_document, status, date_transacted, synced_at)
@@ -314,6 +315,7 @@ def migrate_company(central_conn, legacy_conn, slug):
             migrate_table(
                 legacy_cur, company_cur,
                 f"SELECT id, client_id, client_name, pluggy_item_id, date, description, type, amount, balance, category, category_l1, category_l2, category_l3, account_name, account_number, account_type, institution_name, counterparty_name, counterparty_document, status, date_transacted, synced_at FROM credit_transactions WHERE client_id IN ({placeholders})",
+                client_ids,
                 """
                 INSERT INTO extrator_credit_transactions
                   (id, client_id, client_name, pluggy_item_id, date, description, type, amount, balance, category, category_l1, category_l2, category_l3, account_name, account_number, account_type, institution_name, counterparty_name, counterparty_document, status, date_transacted, synced_at)
@@ -325,6 +327,7 @@ def migrate_company(central_conn, legacy_conn, slug):
             migrate_table(
                 legacy_cur, company_cur,
                 f"SELECT id, client_id, pluggy_item_id, name, type, subtype, balance, value, quantity, due_date, issuer, status, synced_at FROM investments WHERE client_id IN ({placeholders})",
+                client_ids,
                 """
                 INSERT INTO extrator_investments
                   (id, client_id, pluggy_item_id, name, type, subtype, balance, value, quantity, due_date, issuer, status, synced_at)
@@ -336,6 +339,7 @@ def migrate_company(central_conn, legacy_conn, slug):
             migrate_table(
                 legacy_cur, company_cur,
                 f"SELECT id, client_id, pluggy_item_id, account_name, type, balance, credit_limit, institution_name, synced_at FROM debts WHERE client_id IN ({placeholders})",
+                client_ids,
                 """
                 INSERT INTO extrator_debts
                   (id, client_id, pluggy_item_id, account_name, type, balance, credit_limit, institution_name, synced_at)
@@ -347,6 +351,7 @@ def migrate_company(central_conn, legacy_conn, slug):
             migrate_table(
                 legacy_cur, company_cur,
                 f"SELECT id, client_id, item_id, started_at, finished_at, status, error_message, transactions_count FROM sync_logs WHERE client_id IN ({placeholders})",
+                client_ids,
                 """
                 INSERT INTO extrator_sync_logs
                   (id, client_id, item_id, started_at, finished_at, status, error_message, transactions_count)
@@ -358,6 +363,7 @@ def migrate_company(central_conn, legacy_conn, slug):
             migrate_table(
                 legacy_cur, company_cur,
                 f"SELECT id, event_id, event, item_id, payload, received_at FROM webhook_events WHERE item_id IN (SELECT id::text FROM items WHERE client_id IN ({placeholders}))",
+                client_ids,
                 """
                 INSERT INTO extrator_webhook_events
                   (id, event_id, event, item_id, payload, received_at)

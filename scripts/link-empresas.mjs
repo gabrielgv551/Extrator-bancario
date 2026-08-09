@@ -14,11 +14,24 @@
  */
 
 import pg from 'pg';
+import { parse } from 'url';
 
-const pool = new pg.Pool({
-  host: '37.60.236.200', port: 5432, database: 'extratos',
-  user: 'postgres', password: '131105Gv',
-});
+function getDbConfig() {
+  const dbUrl = process.env.DATABASE_URL;
+  if (!dbUrl) {
+    throw new Error('DATABASE_URL não configurada');
+  }
+  const u = parse(dbUrl);
+  return {
+    host: u.hostname,
+    port: parseInt(u.port || '5432', 10),
+    database: decodeURIComponent(u.pathname.replace(/^\//, '')),
+    user: u.auth.split(':')[0],
+    password: u.auth.split(':')[1],
+  };
+}
+
+const pool = new pg.Pool(getDbConfig());
 
 async function migrar() {
   await pool.query(`
