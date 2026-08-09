@@ -93,20 +93,27 @@ def get_company_config_from_central(conn, slug):
         if criptografado and valor:
             raw = get_env('CONFIG_ENCRYPTION_KEY')
             if not raw:
-                raise ValueError('CONFIG_ENCRYPTION_KEY nao configurada para descriptografar db_password')
-            import hashlib
-            import base64
-            from cryptography.hazmat.primitives.ciphers.aead import AESGCM
-            key = hashlib.sha256(raw.encode()).digest()
-            parts = valor.split(':')
-            if len(parts) != 3:
-                raise ValueError(f'Formato criptografado invalido para {chave}')
-            iv = base64.b64decode(parts[0]) if len(parts[0]) > 32 else bytes.fromhex(parts[0])
-            tag = base64.b64decode(parts[1]) if len(parts[1]) > 32 else bytes.fromhex(parts[1])
-            ct = base64.b64decode(parts[2]) if len(parts[2]) > 32 else bytes.fromhex(parts[2])
-            aesgcm = AESGCM(key)
-            valor = aesgcm.decrypt(iv, ct + tag, None).decode('utf-8')
-        cfg[chave] = valor
+                print(f'    [AVISO] CONFIG_ENCRYPTION_KEY ausente; usando fallback para {chave}')
+                continue
+            try:
+                import hashlib
+                import base64
+                from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+                key = hashlib.sha256(raw.encode()).digest()
+                parts = valor.split(':')
+                if len(parts) != 3:
+                    raise ValueError(f'formato invalido')
+                iv = base64.b64decode(parts[0]) if len(parts[0]) > 32 else bytes.fromhex(parts[0])
+                tag = base64.b64decode(parts[1]) if len(parts[1]) > 32 else bytes.fromhex(parts[1])
+                ct = base64.b64decode(parts[2]) if len(parts[2]) > 32 else bytes.fromhex(parts[2])
+                aesgcm = AESGCM(key)
+                valor = aesgcm.decrypt(iv, ct + tag, None).decode('utf-8')
+                cfg[chave] = valor
+            except Exception as e:
+                print(f'    [AVISO] falha ao descriptografar {chave}: {e}; usando fallback')
+                continue
+        else:
+            cfg[chave] = valor
 
     return {
         'host': cfg.get('db_host') or central['host'],
