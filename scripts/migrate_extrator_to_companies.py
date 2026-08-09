@@ -360,18 +360,19 @@ def migrate_company(central_conn, legacy_conn, slug):
                 """,
                 'sync_logs'
             )
-            migrate_table(
-                legacy_cur, company_cur,
-                f"SELECT id, event_id, event, item_id, payload, received_at FROM webhook_events WHERE item_id IN (SELECT id::text FROM items WHERE client_id IN ({placeholders}))",
-                client_ids,
-                """
-                INSERT INTO extrator_webhook_events
-                  (id, event_id, event, item_id, payload, received_at)
-                VALUES (%s,%s,%s,%s,%s,%s)
-                ON CONFLICT (event_id) DO NOTHING
-                """,
-                'webhook_events'
-            )
+            if os.environ.get('MIGRATE_WEBHOOK_EVENTS') == '1':
+                migrate_table(
+                    legacy_cur, company_cur,
+                    f"SELECT id, event_id, event, item_id, payload, received_at FROM webhook_events WHERE item_id IN (SELECT id::text FROM items WHERE client_id IN ({placeholders}))",
+                    client_ids,
+                    """
+                    INSERT INTO extrator_webhook_events
+                      (id, event_id, event, item_id, payload, received_at)
+                    VALUES (%s,%s,%s,%s,%s,%s)
+                    ON CONFLICT (event_id) DO NOTHING
+                    """,
+                    'webhook_events'
+                )
 
     central_conn.commit()
     company_conn.commit()
