@@ -34,7 +34,11 @@ export async function middleware(request) {
   }
 
   request.headers.set('x-extrator-empresa', empresa);
-  return NextResponse.next();
+  return NextResponse.next({
+    request: {
+      headers: request.headers,
+    },
+  });
 }
 
 export const config = {
