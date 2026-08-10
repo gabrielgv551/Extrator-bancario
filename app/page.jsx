@@ -22,6 +22,14 @@ import {
 
 export default function Dashboard() {
   const router = useRouter();
+  const [mode, setMode] = useState(null);
+  const [currentEmpresa, setCurrentEmpresa] = useState(null);
+  const [companies, setCompanies] = useState([]);
+  const [loadingMode, setLoadingMode] = useState(true);
+  const [newCompanySlug, setNewCompanySlug] = useState('');
+  const [newCompanyName, setNewCompanyName] = useState('');
+  const [creatingCompany, setCreatingCompany] = useState(false);
+
   const [clients, setClients] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -31,6 +39,60 @@ export default function Dashboard() {
   const [creating, setCreating] = useState(false);
   const [copiedId, setCopiedId] = useState(null);
   const [fetchError, setFetchError] = useState('');
+
+  const fetchMe = async () => {
+    try {
+      const res = await fetch('/api/admin/me');
+      const data = await res.json();
+      if (!res.ok) {
+        if (res.status === 401) {
+          router.push('/login');
+        }
+        return;
+      }
+      setMode(data.mode);
+      setCurrentEmpresa(data.empresa);
+      if (data.companies) setCompanies(data.companies);
+    } finally {
+      setLoadingMode(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchMe();
+  }, []);
+
+  const selectCompany = async (slug) => {
+    const res = await fetch('/api/admin/select-company', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ empresa: slug }),
+    });
+    if (res.ok) {
+      router.refresh();
+      window.location.reload();
+    }
+  };
+
+  const createCompany = async (e) => {
+    e.preventDefault();
+    if (!newCompanySlug.trim()) return;
+    setCreatingCompany(true);
+    const res = await fetch('/api/admin/companies', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ slug: newCompanySlug, name: newCompanyName }),
+    });
+    const data = await res.json();
+    if (res.ok) {
+      setCompanies((prev) => [...prev, { slug: data.slug, name: data.name }]);
+      setNewCompanySlug('');
+      setNewCompanyName('');
+    } else {
+      alert(data.error || 'Erro ao criar empresa');
+    }
+    setCreatingCompany(false);
+  };
 
   const fetchClients = async () => {
     setLoading(true);
@@ -114,6 +176,99 @@ export default function Dashboard() {
       ? new Date(iso).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })
       : '—';
 
+  if (loadingMode) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <p className="text-gray-500 text-sm">Carregando...</p>
+      </div>
+    );
+  }
+
+  if (mode === 'geral') {
+    return (
+      <div className="min-h-screen bg-gray-50">
+        <header className="bg-white border-b border-gray-200 sticky top-0 z-10">
+          <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 bg-blue-600 rounded-xl flex items-center justify-center">
+                <Building2 className="w-5 h-5 text-white" />
+              </div>
+              <div>
+                <h1 className="text-base font-bold text-gray-900 leading-tight">Extrator Bancário</h1>
+                <p className="text-xs text-gray-400">Admin Geral</p>
+              </div>
+            </div>
+            <button
+              onClick={logout}
+              className="flex items-center gap-2 text-gray-500 border border-gray-300 px-3 py-2 rounded-lg text-sm hover:bg-gray-50 transition-colors"
+              title="Sair"
+            >
+              <LogOut className="w-4 h-4" />
+              Sair
+            </button>
+          </div>
+        </header>
+
+        <main className="max-w-6xl mx-auto px-6 py-8">
+          <h2 className="text-lg font-semibold text-gray-900 mb-4">Empresas cadastradas</h2>
+          {companies.length === 0 ? (
+            <p className="text-gray-500 text-sm">Nenhuma empresa cadastrada.</p>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
+              {companies.map((c) => (
+                <div key={c.slug} className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm flex items-center justify-between">
+                  <div>
+                    <p className="font-medium text-gray-900">{c.name}</p>
+                    <p className="text-xs text-gray-400">{c.slug}</p>
+                  </div>
+                  <button
+                    onClick={() => selectCompany(c.slug)}
+                    className="text-sm bg-blue-600 text-white px-3 py-1.5 rounded-lg hover:bg-blue-700 transition-colors"
+                  >
+                    Entrar
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div className="bg-white rounded-xl border border-gray-200 p-6 shadow-sm max-w-md">
+            <h2 className="text-lg font-semibold text-gray-900 mb-4">Criar nova empresa</h2>
+            <form onSubmit={createCompany} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Slug</label>
+                <input
+                  type="text"
+                  value={newCompanySlug}
+                  onChange={(e) => setNewCompanySlug(e.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, ''))}
+                  placeholder="Ex: nova-empresa"
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Nome</label>
+                <input
+                  type="text"
+                  value={newCompanyName}
+                  onChange={(e) => setNewCompanyName(e.target.value)}
+                  placeholder="Ex: Nova Empresa"
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              <button
+                type="submit"
+                disabled={creatingCompany || !newCompanySlug.trim()}
+                className="w-full bg-blue-600 text-white py-2.5 rounded-lg text-sm font-semibold hover:bg-blue-700 disabled:opacity-50 transition-colors"
+              >
+                {creatingCompany ? 'Criando...' : 'Criar empresa'}
+              </button>
+            </form>
+          </div>
+        </main>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
@@ -129,6 +284,14 @@ export default function Dashboard() {
             </div>
           </div>
           <div className="flex items-center gap-2">
+            <button
+              onClick={() => selectCompany('__geral__')}
+              className="flex items-center gap-2 text-gray-600 border border-gray-300 px-3 py-2 rounded-lg text-sm hover:bg-gray-50 transition-colors"
+              title="Trocar empresa"
+            >
+              <Building2 className="w-4 h-4" />
+              {currentEmpresa || 'Trocar empresa'}
+            </button>
             <button
               onClick={() => setShowModal(true)}
               className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors"

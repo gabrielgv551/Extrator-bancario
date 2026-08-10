@@ -1,9 +1,8 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Building2, Lock, Eye, EyeOff, ChevronDown } from 'lucide-react';
-import { GESTOR_COMPANIES } from '@/gestor.config';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -12,6 +11,20 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [companies, setCompanies] = useState([]);
+  const [loadingCompanies, setLoadingCompanies] = useState(true);
+
+  useEffect(() => {
+    fetch('/api/admin/companies')
+      .then((res) => res.json())
+      .then((data) => {
+        if (Array.isArray(data)) {
+          setCompanies(data.map((c) => (typeof c === 'string' ? { slug: c, name: c.toUpperCase() } : c)));
+        }
+      })
+      .catch((err) => console.error('[login] erro ao carregar empresas:', err))
+      .finally(() => setLoadingCompanies(false));
+  }, []);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -52,9 +65,12 @@ export default function LoginPage() {
                 onChange={(e) => setEmpresa(e.target.value)}
                 className="w-full appearance-none px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
                 autoFocus
+                disabled={loadingCompanies}
               >
-                <option value="">Selecione uma empresa</option>
-                {GESTOR_COMPANIES.map((c) => (
+                <option value="">{loadingCompanies ? 'Carregando empresas...' : 'Selecione uma empresa'}</option>
+                <option value="__geral__">⚙️ Admin Geral</option>
+                <option disabled>──────────────</option>
+                {companies.map((c) => (
                   <option key={c.slug} value={c.slug}>
                     {c.name}
                   </option>

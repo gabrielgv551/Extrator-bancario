@@ -18,6 +18,9 @@ export async function middleware(request) {
     // nao pelo pathname. Admin continua usando cookie extrator_empresa abaixo.
     return NextResponse.next();
   }
+  if (pathname === '/api/admin/companies' && request.method === 'GET') {
+    return NextResponse.next();
+  }
   if (pathname.startsWith('/_next') || pathname === '/favicon.ico') return NextResponse.next();
 
   const session = request.cookies.get('admin_session')?.value;
@@ -29,11 +32,14 @@ export async function middleware(request) {
   }
   const expected = await sessionToken(password);
 
-  if (session !== expected || !empresa) {
+  if (session !== expected) {
     return NextResponse.redirect(new URL('/login', request.url));
   }
 
-  request.headers.set('x-extrator-empresa', empresa);
+  // Admin geral não está vinculado a uma empresa específica.
+  if (empresa && empresa !== '__geral__') {
+    request.headers.set('x-extrator-empresa', empresa);
+  }
   return NextResponse.next({
     request: {
       headers: request.headers,

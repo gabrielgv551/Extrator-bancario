@@ -9,8 +9,9 @@ function sessionToken(password) {
 
 function validEmpresa(value) {
   if (!value || typeof value !== 'string') return null;
-  const slug = value.toLowerCase().trim().replace(/[^a-z0-9_-]/g, '');
-  return slug || null;
+  const slug = value.toLowerCase().trim();
+  if (slug === '__geral__') return '__geral__';
+  return slug.replace(/[^a-z0-9_-]/g, '') || null;
 }
 
 export async function POST(request) {
