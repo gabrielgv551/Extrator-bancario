@@ -37,6 +37,7 @@ export default function Dashboard() {
   const [newName, setNewName] = useState('');
   const [newCnpj, setNewCnpj] = useState('');
   const [creating, setCreating] = useState(false);
+  const [createdClient, setCreatedClient] = useState(null);
   const [copiedId, setCopiedId] = useState(null);
   const [fetchError, setFetchError] = useState('');
 
@@ -148,11 +149,19 @@ export default function Dashboard() {
     router.push('/login');
   };
 
+  const getPortalUrl = (client) => `${window.location.origin}/portal/${client.portalToken}`;
+
   const copyPortalLink = (client) => {
-    const url = `${window.location.origin}/portal/${client.portalToken}`;
+    const url = getPortalUrl(client);
     navigator.clipboard.writeText(url);
     setCopiedId(client.id);
     setTimeout(() => setCopiedId(null), 2000);
+  };
+
+  const sendWhatsApp = (client) => {
+    const url = getPortalUrl(client);
+    const text = encodeURIComponent(`Olá! Acesse seu portal do Extrator Bancário pelo link: ${url}`);
+    window.open(`https://wa.me/?text=${text}`, '_blank', 'noopener,noreferrer');
   };
 
   const createClient = async (e) => {
@@ -170,9 +179,10 @@ export default function Dashboard() {
       body: JSON.stringify({ name: newName, businessTaxId: rawCnpj || undefined }),
     });
     if (res.ok) {
+      const data = await res.json();
+      setCreatedClient(data);
       setNewName('');
       setNewCnpj('');
-      setShowModal(false);
       fetchClients();
     }
     setCreating(false);
@@ -411,16 +421,25 @@ export default function Dashboard() {
                       </span>
                     </td>
                     <td className="px-5 py-3.5">
-                      <button
-                        onClick={() => copyPortalLink(client)}
-                        className="inline-flex items-center gap-1.5 text-xs border px-2.5 py-1 rounded-full font-medium transition-colors"
-                        style={copiedId === client.id
-                          ? { background: '#dcfce7', color: '#166534', borderColor: '#bbf7d0' }
-                          : { background: '#eff6ff', color: '#1d4ed8', borderColor: '#bfdbfe' }}
-                      >
-                        {copiedId === client.id ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
-                        {copiedId === client.id ? 'Copiado!' : 'Copiar link'}
-                      </button>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => copyPortalLink(client)}
+                          className="inline-flex items-center gap-1.5 text-xs border px-2.5 py-1 rounded-full font-medium transition-colors"
+                          style={copiedId === client.id
+                            ? { background: '#dcfce7', color: '#166534', borderColor: '#bbf7d0' }
+                            : { background: '#eff6ff', color: '#1d4ed8', borderColor: '#bfdbfe' }}
+                        >
+                          {copiedId === client.id ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+                          {copiedId === client.id ? 'Copiado!' : 'Copiar link'}
+                        </button>
+                        <button
+                          onClick={() => sendWhatsApp(client)}
+                          className="inline-flex items-center gap-1.5 text-xs border px-2.5 py-1 rounded-full font-medium transition-colors bg-green-50 text-green-700 border-green-200 hover:bg-green-100"
+                          title="Enviar por WhatsApp"
+                        >
+                          WhatsApp
+                        </button>
+                      </div>
                     </td>
                     <td className="px-5 py-3.5 text-gray-500 text-xs">{formatDate(client.lastSync)}</td>
                     <td className="px-5 py-3.5">
@@ -455,53 +474,88 @@ export default function Dashboard() {
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl">
             <div className="flex items-center justify-between mb-5">
-              <h2 className="text-lg font-bold text-gray-900">Novo Cliente</h2>
+              <h2 className="text-lg font-bold text-gray-900">
+                {createdClient ? 'Cliente criado!' : 'Novo Cliente'}
+              </h2>
               <button
-                onClick={() => { setShowModal(false); setNewName(''); }}
+                onClick={() => { setShowModal(false); setNewName(''); setCreatedClient(null); }}
                 className="text-gray-400 hover:text-gray-600 transition-colors"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
-            <form onSubmit={createClient}>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Nome do cliente
-              </label>
-              <input
-                type="text"
-                value={newName}
-                onChange={(e) => setNewName(e.target.value)}
-                placeholder="Ex: João Silva"
-                className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 mb-4"
-                autoFocus
-              />
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                CNPJ <span className="text-gray-400 font-normal">(opcional)</span>
-              </label>
-              <input
-                type="text"
-                value={newCnpj}
-                onChange={(e) => setNewCnpj(e.target.value)}
-                placeholder="00.000.000/0000-00"
-                className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 mb-5"
-              />
-              <div className="flex gap-2 justify-end">
+
+            {createdClient ? (
+              <div className="space-y-4">
+                <p className="text-sm text-gray-600">
+                  Cliente <span className="font-semibold">{createdClient.name}</span> criado com sucesso.
+                </p>
+                <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 text-sm text-gray-700 break-all">
+                  {getPortalUrl(createdClient)}
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => copyPortalLink(createdClient)}
+                    className="flex-1 flex items-center justify-center gap-2 bg-blue-600 text-white py-2 rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors"
+                  >
+                    {copiedId === createdClient.id ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+                    {copiedId === createdClient.id ? 'Copiado!' : 'Copiar link'}
+                  </button>
+                  <button
+                    onClick={() => sendWhatsApp(createdClient)}
+                    className="flex-1 flex items-center justify-center gap-2 bg-green-600 text-white py-2 rounded-lg text-sm font-medium hover:bg-green-700 transition-colors"
+                  >
+                    WhatsApp
+                  </button>
+                </div>
                 <button
-                  type="button"
-                  onClick={() => { setShowModal(false); setNewName(''); setNewCnpj(''); }}
-                  className="px-4 py-2 text-sm text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                  onClick={() => { setShowModal(false); setCreatedClient(null); }}
+                  className="w-full py-2 text-sm text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
                 >
-                  Cancelar
-                </button>
-                <button
-                  type="submit"
-                  disabled={creating || !newName.trim()}
-                  className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
-                >
-                  {creating ? 'Criando...' : 'Criar Cliente'}
+                  Fechar
                 </button>
               </div>
-            </form>
+            ) : (
+              <form onSubmit={createClient}>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Nome do cliente
+                </label>
+                <input
+                  type="text"
+                  value={newName}
+                  onChange={(e) => setNewName(e.target.value)}
+                  placeholder="Ex: João Silva"
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 mb-4"
+                  autoFocus
+                />
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  CNPJ <span className="text-gray-400 font-normal">(opcional)</span>
+                </label>
+                <input
+                  type="text"
+                  value={newCnpj}
+                  onChange={(e) => setNewCnpj(e.target.value)}
+                  placeholder="00.000.000/0000-00"
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 mb-5"
+                />
+                <div className="flex gap-2 justify-end">
+                  <button
+                    type="button"
+                    onClick={() => { setShowModal(false); setNewName(''); setNewCnpj(''); }}
+                    className="px-4 py-2 text-sm text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={creating || !newName.trim()}
+                    className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
+                  >
+                    {creating ? 'Criando...' : 'Criar Cliente'}
+                  </button>
+                </div>
+              </form>
+            )}
           </div>
         </div>
       )}
