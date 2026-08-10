@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import pg from 'pg';
-import { listActiveCompanies, getCentralConfig, getCompanyPool } from '@/lib/company-db';
+import { listActiveCompanies, getCentralConfig } from '@/lib/company-db';
 import { setupCompanyDatabase } from '@/lib/setup-db';
 
 const { Pool } = pg;
@@ -63,16 +63,6 @@ export async function POST(request) {
     // Cria o banco da empresa e roda o schema
     const dbName = `have_${empresaSlug}`;
     await setupCompanyDatabase(central, dbName);
-
-    // Limpa o pool cache para a nova empresa
-    try {
-      const pool = await getCompanyPool(empresaSlug);
-      if (pool) {
-        await pool.end();
-      }
-    } catch {
-      // ignora se o pool ainda não existia
-    }
 
     return NextResponse.json({ success: true, slug: empresaSlug, name: empresaName });
   } catch (err) {
