@@ -53,8 +53,8 @@ export async function POST(request) {
       }
 
       await centralPool.query(
-        `INSERT INTO empresas (slug, nome, status) VALUES ($1, $2, 'ativo')`,
-        [empresaSlug, empresaName]
+        `INSERT INTO empresas (slug, nome, status, db_env_key) VALUES ($1, $2, 'ativo', $3)`,
+        [empresaSlug, empresaName, empresaSlug]
       );
     } finally {
       await centralPool.end();
