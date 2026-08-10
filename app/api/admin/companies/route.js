@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import pg from 'pg';
 import { listActiveCompanies, getCentralConfig } from '@/lib/company-db';
-import { setupCompanyDatabase } from '@/lib/setup-db';
+import { setupCompanyDatabase } from '@/lib/setup-company-db';
 
 const { Pool } = pg;
 
