@@ -2,7 +2,8 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Building2, Lock, Eye, EyeOff } from 'lucide-react';
+import { Building2, Lock, Eye, EyeOff, ChevronDown } from 'lucide-react';
+import { GESTOR_COMPANIES } from '@/gestor.config';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -45,15 +46,23 @@ export default function LoginPage() {
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1.5">Empresa</label>
-            <input
-              type="text"
-              value={empresa}
-              onChange={(e) => setEmpresa(e.target.value)}
-              placeholder="Ex: lanzi"
-              className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              autoFocus
-            />
-            <p className="text-xs text-gray-400 mt-1">Slug da empresa no Have Gestor</p>
+            <div className="relative">
+              <select
+                value={empresa}
+                onChange={(e) => setEmpresa(e.target.value)}
+                className="w-full appearance-none px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                autoFocus
+              >
+                <option value="">Selecione uma empresa</option>
+                {GESTOR_COMPANIES.map((c) => (
+                  <option key={c.slug} value={c.slug}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+            </div>
+            <p className="text-xs text-gray-400 mt-1">Selecione a empresa no Have Gestor</p>
           </div>
 
           <div>
@@ -85,7 +94,7 @@ export default function LoginPage() {
 
           <button
             type="submit"
-            disabled={loading || !password}
+            disabled={loading || !password || !empresa}
             className="w-full bg-blue-600 text-white py-2.5 rounded-lg text-sm font-semibold hover:bg-blue-700 disabled:opacity-50 transition-colors"
           >
             {loading ? 'Entrando...' : 'Entrar'}
