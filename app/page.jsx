@@ -74,6 +74,19 @@ export default function Dashboard() {
     }
   };
 
+  const resetCompany = async (slug) => {
+    if (!confirm(`Isso vai apagar TODO o banco da empresa "${slug}" e recriar o schema. Continuar?`)) return;
+    const res = await fetch(`/api/admin/companies/${encodeURIComponent(slug)}/reset`, {
+      method: 'POST',
+    });
+    const data = await res.json();
+    if (res.ok) {
+      alert(`Banco da empresa "${slug}" recriado com sucesso.`);
+    } else {
+      alert(data.error || 'Erro ao resetar empresa');
+    }
+  };
+
   const createCompany = async (e) => {
     e.preventDefault();
     if (!newCompanySlug.trim()) return;
@@ -221,12 +234,21 @@ export default function Dashboard() {
                     <p className="font-medium text-gray-900">{c.name}</p>
                     <p className="text-xs text-gray-400">{c.slug}</p>
                   </div>
-                  <button
-                    onClick={() => selectCompany(c.slug)}
-                    className="text-sm bg-blue-600 text-white px-3 py-1.5 rounded-lg hover:bg-blue-700 transition-colors"
-                  >
-                    Entrar
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => resetCompany(c.slug)}
+                      className="text-sm text-orange-600 border border-orange-200 bg-orange-50 hover:bg-orange-100 px-3 py-1.5 rounded-lg transition-colors"
+                      title="Recria o banco (apaga dados)"
+                    >
+                      Resetar
+                    </button>
+                    <button
+                      onClick={() => selectCompany(c.slug)}
+                      className="text-sm bg-blue-600 text-white px-3 py-1.5 rounded-lg hover:bg-blue-700 transition-colors"
+                    >
+                      Entrar
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>
