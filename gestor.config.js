@@ -31,4 +31,7 @@ export const GESTOR_COMPANIES = [
   { slug: 'teste', name: 'teste' },
   { slug: 'thmz', name: 'Thmz Decor' },
   { slug: 'tuti', name: 'Tuti' },
+  { slug: 'guilhen', name: 'Guilhen' },
+  { slug: 'guilhen_antigo', name: 'Guilhen Antigo' },
+  { slug: 'guilhen_filial', name: 'Guilhen Filial' },
 ];
