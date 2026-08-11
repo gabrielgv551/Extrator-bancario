@@ -1,8 +1,8 @@
 import './globals.css';
 
 export const metadata = {
-  title: 'Extrator Bancário — Pluggy',
-  description: 'Gerencie extratos bancários dos seus clientes via Pluggy',
+  title: 'Extrator Bancário — Have',
+  description: 'Gerencie extratos bancários dos seus clientes via Have',
 };
 
 export default function RootLayout({ children }) {
