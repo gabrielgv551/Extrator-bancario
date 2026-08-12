@@ -6,7 +6,7 @@ import {
   upsertInvestments, upsertDebts, upsertDerivedDebts,
   softDeleteItem, markItemNotified,
 } from '@/lib/storage-company';
-import { getEmpresaByItem } from '@/lib/central-token-map';
+import { getEmpresaByItemWithFallback } from '@/lib/central-token-map';
 import { getCompanyPool } from '@/lib/company-db';
 import { mapKlaviReportToLocal, normalizeKlaviStatus, isKlaviConsentAuthorised, isKlaviConsentRejected } from '@/lib/klavi';
 import { buildItemStatusUpdates } from '@/lib/status';
@@ -165,7 +165,7 @@ export async function POST(request) {
   const { event, eventId, linkId, consentId } = extractReportMetadata(payload);
 
   // Resolve empresa pelo item identificado no webhook.
-  const empresa = await getEmpresaByItem({ klaviLinkId: linkId, klaviConsentId: consentId });
+  const empresa = await getEmpresaByItemWithFallback({ klaviLinkId: linkId, klaviConsentId: consentId });
   if (!empresa) {
     console.warn('[klavi webhook] não foi possível resolver empresa para linkId=%s consentId=%s', linkId, consentId);
     // Retorna 200 para não fazer a Klavi reenviar; mas não processamos.

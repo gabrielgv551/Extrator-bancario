@@ -3,7 +3,7 @@ import {
   getItemByPluggyId, updateItemStatus, recordWebhookEvent, hasWebhookEvent,
   softDeleteItem, markItemNotified, getClientById, deleteTransactionsByIds,
 } from '@/lib/storage-company';
-import { getEmpresaByItem } from '@/lib/central-token-map';
+import { getEmpresaByItemWithFallback } from '@/lib/central-token-map';
 import { getCompanyPool } from '@/lib/company-db';
 import { getItem } from '@/lib/pluggy';
 import { buildItemStatusUpdates, isItemHealthy } from '@/lib/status';
@@ -150,7 +150,7 @@ export async function POST(request) {
   }
 
   // Resolve empresa pelo pluggy_item_id.
-  const empresa = await getEmpresaByItem({ pluggyItemId: itemId });
+  const empresa = await getEmpresaByItemWithFallback({ pluggyItemId: itemId });
   if (!empresa) {
     console.warn('[webhook] não foi possível resolver empresa para pluggyItemId=%s', itemId);
     return NextResponse.json({ received: true, unresolved: true });
