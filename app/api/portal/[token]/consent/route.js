@@ -216,6 +216,17 @@ export async function POST(request, { params }) {
     }
   } catch (error) {
     console.error('[portal consent] erro:', error);
+    console.error('[portal consent] detalhes:', {
+      message: error.message,
+      status: error.status,
+      code: error.code,
+      body: error.body,
+      stack: error.stack,
+      institutionCode: body?.institutionCode,
+      taxType: body?.taxType,
+      hasBusinessTaxId: !!body?.businessTaxId,
+      hasPersonalTaxId: !!body?.personalTaxId,
+    });
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }

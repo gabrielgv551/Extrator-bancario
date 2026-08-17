@@ -14,6 +14,10 @@ export async function GET(request, { params }) {
     const items = await getItemsByClientId(pool, id);
     if (items.length === 0) return new Response('Nenhuma conta bancária conectada', { status: 400 });
 
+    const klaviItemIds = new Set(
+      items.filter((i) => i.provider === 'klavi').map((i) => i.id)
+    );
+
     const { searchParams } = new URL(request.url);
     const from = searchParams.get('from') || undefined;
     const to = searchParams.get('to') || undefined;
@@ -38,7 +42,11 @@ export async function GET(request, { params }) {
           `"${(tx.description || '').replace(/"/g, '""')}"`,
           tx.type === 'CREDIT' ? 'Entrada' : 'Saída',
           tx.amount,
-          tx.balance ?? '',
+          tx.balance != null
+            ? tx.balance
+            : klaviItemIds.has(tx.pluggyItemId)
+              ? 'N/A (Klavi não informa saldo por transação)'
+              : '',
           tx.categoryL1 ?? '',
           tx.categoryL2 ?? '',
           tx.categoryL3 ?? '',

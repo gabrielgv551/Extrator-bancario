@@ -93,6 +93,14 @@ export async function POST(request, { params }) {
     }).catch(err => console.error('[portal/items] falha ao registrar item location:', err.message));
     return NextResponse.json(item, { status: 201 });
   } catch (error) {
+    console.error('[portal/items] erro ao salvar item:', error);
+    console.error('[portal/items] detalhes:', {
+      message: error.message,
+      status: error.status,
+      code: error.code,
+      body: error.body,
+      stack: error.stack,
+    });
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }

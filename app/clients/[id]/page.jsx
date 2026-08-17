@@ -42,6 +42,9 @@ export default function ClientPage({ params }) {
   const [editingCnpj, setEditingCnpj] = useState(false);
   const [cnpjInput, setCnpjInput] = useState('');
   const [savingCnpj, setSavingCnpj] = useState(false);
+  const [editingName, setEditingName] = useState(false);
+  const [nameInput, setNameInput] = useState('');
+  const [savingName, setSavingName] = useState(false);
   const [gestorCompanies, setGestorCompanies] = useState([]);
   const [testingProducts, setTestingProducts] = useState(null);
   const [productTestResult, setProductTestResult] = useState(null);
@@ -82,11 +85,39 @@ export default function ClientPage({ params }) {
     }
   };
 
+  const saveName = async () => {
+    const name = nameInput.trim();
+    if (!name) {
+      setError('O nome do cliente não pode ficar em branco.');
+      return;
+    }
+    setSavingName(true);
+    setError('');
+    try {
+      const res = await fetch(`/api/clients/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setClient(data);
+        setEditingName(false);
+      } else {
+        const data = await res.json();
+        setError(data.error || 'Erro ao salvar nome');
+      }
+    } finally {
+      setSavingName(false);
+    }
+  };
+
   const fetchClient = useCallback(async () => {
     const clientRes = await fetch(`/api/clients/${id}`);
     if (clientRes.ok) {
       const data = await clientRes.json();
       setClient(data);
+      setNameInput(data.name ?? '');
       setEmpresaInput(data.gestorEmpresa ?? '');
       setCnpjInput(data.businessTaxId ?? '');
       const portalRes = await fetch(`/api/portal/${data.portalToken}`);
@@ -302,7 +333,34 @@ export default function ClientPage({ params }) {
             <ChevronLeft className="w-5 h-5" />
           </Link>
           <div className="flex-1">
-            <h1 className="text-base font-bold text-gray-900 leading-tight">{client.name}</h1>
+            {editingName ? (
+              <div className="flex items-center gap-1.5">
+                <input
+                  autoFocus
+                  type="text"
+                  value={nameInput}
+                  onChange={(e) => setNameInput(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') saveName(); if (e.key === 'Escape') setEditingName(false); }}
+                  placeholder="Nome do cliente"
+                  className="text-base font-bold text-gray-900 border border-blue-400 rounded px-2 py-0.5 focus:outline-none focus:ring-1 focus:ring-blue-500 w-64"
+                />
+                <button onClick={saveName} disabled={savingName} className="text-green-600 hover:text-green-700 p-0.5">
+                  <Check className="w-3.5 h-3.5" />
+                </button>
+                <button onClick={() => setEditingName(false)} className="text-gray-400 hover:text-gray-600 p-0.5">
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={() => { setNameInput(client.name ?? ''); setEditingName(true); }}
+                className="flex items-center gap-1 text-base font-bold text-gray-900 hover:text-blue-600 transition-colors group"
+                title="Editar nome do cliente"
+              >
+                <span>{client.name}</span>
+                <Pencil className="w-3.5 h-3.5 opacity-0 group-hover:opacity-100 transition-opacity" />
+              </button>
+            )}
             <div className="flex items-center gap-1.5 mt-0.5">
               {editingEmpresa ? (
                 <>
@@ -643,11 +701,15 @@ export default function ClientPage({ params }) {
                       </tr>
                     </thead>
                     <tbody>
-                      {transactions.map((tx, idx) => (
-                        <tr
-                          key={tx.id || idx}
-                          className="border-b border-gray-100 hover:bg-gray-50 transition-colors"
-                        >
+                      {(() => {
+                        const klaviItemIds = new Set(
+                          items.filter((i) => i.provider === 'klavi').map((i) => i.id)
+                        );
+                        return transactions.map((tx, idx) => (
+                          <tr
+                            key={tx.id || idx}
+                            className="border-b border-gray-100 hover:bg-gray-50 transition-colors"
+                          >
                           <td className="px-4 py-2.5 text-gray-500 whitespace-nowrap text-xs">
                             {formatDate(tx.date)}
                           </td>
@@ -679,7 +741,13 @@ export default function ClientPage({ params }) {
                             {formatCurrency(Math.abs(tx.amount))}
                           </td>
                           <td className="px-4 py-2.5 text-right text-gray-500 whitespace-nowrap text-xs">
-                            {tx.balance != null ? formatCurrency(tx.balance) : '—'}
+                            {tx.balance != null ? (
+                              formatCurrency(tx.balance)
+                            ) : klaviItemIds.has(tx.pluggyItemId) ? (
+                              <span title="Klavi não informa saldo por transação">N/A</span>
+                            ) : (
+                              '—'
+                            )}
                           </td>
                           <td className="px-4 py-2.5 text-gray-500 text-xs">{tx.categoryL1 || '—'}</td>
                           <td className="px-4 py-2.5 text-gray-500 text-xs">{tx.categoryL2 || '—'}</td>
@@ -691,7 +759,8 @@ export default function ClientPage({ params }) {
                             {tx.accountNumber || '—'}
                           </td>
                         </tr>
-                      ))}
+                        ));
+                      })()}
                     </tbody>
                   </table>
                 </div>

@@ -2,14 +2,10 @@ import { NextResponse } from 'next/server';
 import { getClientByToken, addKlaviItem, getItemByKlaviLinkId, updateItemStatus } from '@/lib/storage-company';
 import { getEmpresaByToken, registerItemLocation } from '@/lib/central-token-map';
 import { getCompanyPool } from '@/lib/company-db';
-import { requestBusinessInstitutionData } from '@/lib/klavi';
+import { requestBusinessInstitutionData, DEFAULT_KLAVI_PRODUCTS } from '@/lib/klavi';
 import { v4 as uuidv4 } from 'uuid';
 
 export const dynamic = 'force-dynamic';
-
-// Nomes exatos dos produtos institution-level PJ na Klavi.
-// Ver: https://docs.klavi.ai/connect/overview
-const DEFAULT_PRODUCTS = ['pj_categorized_checking_l3'];
 
 export async function GET(request, { params }) {
   const { token } = await params;
@@ -70,6 +66,7 @@ export async function GET(request, { params }) {
 
     // Solicita relatório. O webhook de consent/authorised também pode disparar, mas
     // fazemos a solicitação explícita aqui para garantir.
+    // No fluxo widget-first, a instituição pode não ser conhecida ainda (item criado sem institutionCode).
     const businessTaxId = item.businessTaxId || client.businessTaxId;
     if (businessTaxId && item.institutionCode) {
       try {
@@ -78,20 +75,18 @@ export async function GET(request, { params }) {
           institutionCode: item.institutionCode,
           linkId,
           consentIds: consentId ? [consentId] : [],
-          products: DEFAULT_PRODUCTS,
+          products: DEFAULT_KLAVI_PRODUCTS,
           productsCallbackUrl: process.env.KLAVI_WEBHOOK_URL || null,
         });
       } catch (err) {
-        console.error('[portal callback] falha ao solicitar relatório:', err);
-        return NextResponse.json({
-          success: false,
-          error: 'Falha ao solicitar dados do banco',
-          errorDescription: err.message,
-        }, { status: 502 });
+        console.error('[portal callback] falha ao solicitar relatório (não crítica):', err);
+        // Não retorna erro: o webhook pode completar o processo.
       }
+    } else {
+      console.log('[portal callback] institutionCode não disponível ainda; aguardando webhook. linkId=%s consentId=%s', linkId, consentId);
     }
 
-    await updateItemStatus(pool, item.id, { status: 'UPDATING', klaviConsentId: consentId || item.klaviConsentId });
+    await updateItemStatus(pool, item.id, { status: consentId ? 'UPDATING' : 'WAITING_DATA', klaviConsentId: consentId || item.klaviConsentId });
 
     return NextResponse.json({
       success: true,

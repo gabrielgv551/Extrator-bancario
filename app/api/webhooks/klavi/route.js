@@ -8,7 +8,8 @@ import {
 } from '@/lib/storage-company';
 import { getEmpresaByItem } from '@/lib/central-token-map';
 import { getCompanyPool } from '@/lib/company-db';
-import { mapKlaviReportToLocal, normalizeKlaviStatus, isKlaviConsentAuthorised, isKlaviConsentRejected } from '@/lib/klavi';
+import { mapKlaviReportToLocal, normalizeKlaviStatus, isKlaviConsentAuthorised, isKlaviConsentRejected, requestBusinessInstitutionData, requestPersonalInstitutionData, DEFAULT_KLAVI_PRODUCTS } from '@/lib/klavi';
+import { enrichTransactionsWithCompanyName } from '@/lib/cnpj-enrichment';
 import { buildItemStatusUpdates } from '@/lib/status';
 
 export const dynamic = 'force-dynamic';
@@ -42,6 +43,14 @@ function extractReportMetadata(payload) {
   const event = payload?.event || null;
   const eventId = payload?.eventId || payload?.event_id || productReportId || `${event}|${linkId}|${consentId}`;
   return { report, productName, productReportId, linkId, consentId, institutionCode, event, eventId };
+}
+
+function extractConsentMetadata(payload) {
+  const consent = payload?.consent || payload?.data || payload;
+  const institutionCode = consent?.institutionCode || consent?.institution_code || payload?.institutionCode || payload?.institution_code || null;
+  const institutionName = consent?.institutionName || consent?.institution_name || payload?.institutionName || payload?.institution_name || null;
+  const institutionLogo = consent?.institutionLogo || consent?.institution_logo || payload?.institutionLogo || payload?.institution_logo || null;
+  return { institutionCode, institutionName, institutionLogo };
 }
 
 async function findLocalItem(pool, { linkId, consentId }) {
@@ -79,6 +88,10 @@ async function persistReport(pool, localItem, payload) {
   const client = await getClientById(pool, localItem.clientId).catch(() => null);
   const clientName = client?.name || localItem?.clientName || null;
   const mapped = mapKlaviReportToLocal({ productName, report, institutionCode, institutionName });
+
+  // Enriquece CNPJ da contraparte com razão social via API externa.
+  await enrichTransactionsWithCompanyName(mapped.bankTransactions);
+  await enrichTransactionsWithCompanyName(mapped.creditTransactions);
 
   const savedBank = mapped.bankTransactions.length
     ? await upsertTransactionsBatch(pool, localItem.clientId, clientName, localItem.id, mapped.bankTransactions)
@@ -140,6 +153,47 @@ async function maybeNotifyReconnection(pool, localItem) {
   await markItemNotified(pool, localItem.id);
   const client = await getClientById(pool, localItem.clientId).catch(() => null);
   console.log('[klavi webhook] notificação de reconexão registrada para cliente=%s item=%s', client?.name || localItem.clientId, localItem.id);
+}
+
+async function requestReportAfterConsent(pool, localItem) {
+  try {
+    if (!localItem.institutionCode) {
+      console.log('[klavi webhook] institutionCode ainda não disponível; não solicitando relatório agora item=%s', localItem.id);
+      return;
+    }
+    const client = await getClientById(pool, localItem.clientId).catch(() => null);
+    const businessTaxId = localItem.businessTaxId || client?.businessTaxId;
+    const personalTaxId = localItem.personalTaxId || client?.personalTaxId;
+
+    if (localItem.taxType === 'pf' && personalTaxId) {
+      console.log('[klavi webhook] solicitando relatório PF após consent item=%s institution=%s', localItem.id, localItem.institutionCode);
+      await requestPersonalInstitutionData({
+        personalTaxId,
+        institutionCode: localItem.institutionCode,
+        linkId: localItem.klaviLinkId,
+        consentIds: localItem.klaviConsentId ? [localItem.klaviConsentId] : [],
+        products: DEFAULT_KLAVI_PRODUCTS,
+        productsCallbackUrl: process.env.KLAVI_WEBHOOK_URL || null,
+      });
+    } else if (businessTaxId) {
+      console.log('[klavi webhook] solicitando relatório PJ após consent item=%s institution=%s', localItem.id, localItem.institutionCode);
+      await requestBusinessInstitutionData({
+        businessTaxId,
+        institutionCode: localItem.institutionCode,
+        linkId: localItem.klaviLinkId,
+        consentIds: localItem.klaviConsentId ? [localItem.klaviConsentId] : [],
+        products: DEFAULT_KLAVI_PRODUCTS,
+        productsCallbackUrl: process.env.KLAVI_WEBHOOK_URL || null,
+      });
+    } else {
+      console.log('[klavi webhook] CPF/CNPJ não disponível para solicitar relatório item=%s', localItem.id);
+      return;
+    }
+
+    await updateItemStatus(pool, localItem.id, { status: 'UPDATING' });
+  } catch (err) {
+    console.error('[klavi webhook] erro ao solicitar relatório após consent item=%s:', localItem.id, err.message, err.status, err.code);
+  }
 }
 
 export async function GET(request) {
@@ -205,12 +259,29 @@ export async function POST(request) {
 
     if (eventLower.includes('consent')) {
       if (localItem) {
+        // Atualiza instituição se vier no payload de consentimento (fluxo widget-first).
+        const { institutionCode, institutionName, institutionLogo } = extractConsentMetadata(payload);
+        if (institutionCode || institutionName) {
+          const updates = {};
+          if (institutionCode && !localItem.institutionCode) updates.institutionCode = institutionCode;
+          if (institutionName && !localItem.institutionName) updates.institutionName = institutionName;
+          if (institutionLogo && !localItem.institutionLogo) updates.institutionLogo = institutionLogo;
+          if (Object.keys(updates).length > 0) {
+            await updateItemStatus(pool, localItem.id, updates);
+            console.log('[klavi webhook] item=%s atualizado com instituição: %j', localItem.id, updates);
+          }
+        }
+
         await updateItemStatusFromPayload(pool, localItem, payload);
         if (isKlaviConsentAuthorised(payload?.consentStatus || payload?.status)) {
           // Consentimento autorizado: solicitação de relatório já deve ter sido feita no callback.
           // Se o webhook vier com dados completos, persistimos.
           if (payload?.report || payload?.checkingAccounts || payload?.creditCardAccounts) {
             scheduleAsync(persistReport(pool, localItem, payload), `persistReport ${localItem.id}`);
+          } else {
+            // Evita itens presos em UPDATING quando o callback não conseguiu solicitar
+            // (ex: institutionCode ainda não disponível na hora do redirect).
+            scheduleAsync(requestReportAfterConsent(pool, localItem), `requestReportAfterConsent ${localItem.id}`);
           }
         }
         if (isKlaviConsentRejected(payload?.consentStatus || payload?.status)) {

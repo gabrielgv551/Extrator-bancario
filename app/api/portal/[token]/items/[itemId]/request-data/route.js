@@ -2,12 +2,10 @@ import { NextResponse } from 'next/server';
 import { getClientByToken, getItemById } from '@/lib/storage-company';
 import { getEmpresaByToken } from '@/lib/central-token-map';
 import { getCompanyPool } from '@/lib/company-db';
-import { requestBusinessInstitutionData, requestPersonalInstitutionData } from '@/lib/klavi';
+import { requestBusinessInstitutionData, requestPersonalInstitutionData, DEFAULT_KLAVI_PRODUCTS } from '@/lib/klavi';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
-
-const DEFAULT_PRODUCTS = ['all'];
 
 export async function POST(request, { params }) {
   const { token } = await params;
@@ -39,7 +37,7 @@ export async function POST(request, { params }) {
         institutionCode: item.institutionCode,
         linkId: item.klaviLinkId,
         consentIds: item.klaviConsentId ? [item.klaviConsentId] : [],
-        products: DEFAULT_PRODUCTS,
+        products: DEFAULT_KLAVI_PRODUCTS,
         productsCallbackUrl: process.env.KLAVI_WEBHOOK_URL || null,
       });
       return NextResponse.json({ success: true, message: 'Solicitação de dados PF enviada ao banco.' });
@@ -50,7 +48,7 @@ export async function POST(request, { params }) {
       institutionCode: item.institutionCode,
       linkId: item.klaviLinkId,
       consentIds: item.klaviConsentId ? [item.klaviConsentId] : [],
-      products: DEFAULT_PRODUCTS,
+      products: DEFAULT_KLAVI_PRODUCTS,
       productsCallbackUrl: process.env.KLAVI_WEBHOOK_URL || null,
     });
 

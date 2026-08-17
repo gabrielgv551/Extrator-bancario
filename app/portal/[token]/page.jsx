@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, use } from 'react';
-import { Plus, Trash2, Building2, Wifi, AlertCircle, CheckCircle, Loader2, ExternalLink, RefreshCw } from 'lucide-react';
+import { Plus, Trash2, Building2, Wifi, AlertCircle, CheckCircle, Loader2, RefreshCw } from 'lucide-react';
 
 export default function PortalPage({ params }) {
   const { token } = use(params);
@@ -13,15 +13,11 @@ export default function PortalPage({ params }) {
   const [connecting, setConnecting] = useState(false);
   const [removingId, setRemovingId] = useState(null);
   const [message, setMessage] = useState(null);
-  const [connectors, setConnectors] = useState([]);
-  const [showConnectorSelector, setShowConnectorSelector] = useState(false);
-  const [selectedConnector, setSelectedConnector] = useState(null);
   const [selectedTaxType, setSelectedTaxType] = useState(null);
   const [cnpjInput, setCnpjInput] = useState('');
   const [cpfInput, setCpfInput] = useState('');
   const [showTaxIdsInput, setShowTaxIdsInput] = useState(false);
   const [showTaxTypeSelector, setShowTaxTypeSelector] = useState(false);
-  const [pendingConnector, setPendingConnector] = useState(null);
 
   const fetchData = async () => {
     const res = await fetch(`/api/portal/${token}`);
@@ -32,19 +28,7 @@ export default function PortalPage({ params }) {
     setLoading(false);
   };
 
-  const fetchConnectors = async () => {
-    try {
-      const res = await fetch(`/api/portal/${token}/institutions`);
-      if (res.ok) {
-        const data = await res.json();
-        setConnectors(data.institutions || []);
-      }
-    } catch (e) {
-      console.error('Erro ao buscar instituições:', e);
-    }
-  };
-
-  useEffect(() => { fetchData(); fetchConnectors(); }, [token]);
+  useEffect(() => { fetchData(); }, [token]);
 
   const showMessage = (text, type = 'success') => {
     setMessage({ text, type });
@@ -111,28 +95,17 @@ export default function PortalPage({ params }) {
       return;
     }
     setShowTaxIdsInput(false);
-    if (pendingConnector) {
-      const connector = pendingConnector;
-      setPendingConnector(null);
-      handleSelectConnector(connector);
-    } else {
-      setShowConnectorSelector(true);
-    }
+    handleCreateLink();
   };
 
-  const handleSelectConnector = async (connector) => {
-    setSelectedConnector(connector);
-    setShowConnectorSelector(false);
-
+  const handleCreateLink = async () => {
     const rawCnpj = cnpjInput.replace(/\D/g, '');
     const rawCpf = cpfInput.replace(/\D/g, '');
     const isPJ = selectedTaxType === 'pj';
     const businessTaxId = isPJ ? (client?.businessTaxId || rawCnpj) : undefined;
     const personalTaxId = rawCpf;
 
-    // Se faltar CPF (ou CNPJ no caso PJ), abre o modal e guarda o connector para continuar depois.
     if (!personalTaxId || (isPJ && !businessTaxId)) {
-      setPendingConnector(connector);
       setShowTaxIdsInput(true);
       setConnecting(false);
       return;
@@ -141,30 +114,35 @@ export default function PortalPage({ params }) {
     setConnecting(true);
 
     try {
-
-      const res = await fetch(`/api/portal/${token}/consent`, {
+      const res = await fetch(`/api/portal/${token}/link`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          institutionCode: connector.institutionCode,
-          businessTaxId,
-          personalTaxId,
-          taxType: selectedTaxType,
-        }),
+        body: JSON.stringify({ businessTaxId, personalTaxId, taxType: selectedTaxType }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
+      if (!res.ok) {
+        console.error('[portal] erro ao criar link:', { status: res.status, body: data });
+        throw new Error(data.error);
+      }
 
-      // Salva item local antes de redirecionar.
+      // Se já existe consentimento autorizado, o backend conectou automaticamente.
+      if (data.autoConnected) {
+        showMessage(data.message || 'Banco conectado automaticamente usando autorização existente.', 'success');
+        await fetchData();
+        setConnecting(false);
+        return;
+      }
+
+      // Salva item local antes de redirecionar para o widget Klavi.
       await fetch(`/api/portal/${token}/items`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           klaviLinkId: data.linkId,
-          klaviConsentId: data.consentId,
-          institutionCode: connector.institutionCode,
-          institutionName: connector.name,
-          institutionLogo: connector.avatar || null,
+          klaviConsentId: null,
+          institutionCode: null,
+          institutionName: 'Banco selecionado no widget Klavi',
+          institutionLogo: null,
           businessTaxId,
           personalTaxId,
           taxType: selectedTaxType,
@@ -172,12 +150,11 @@ export default function PortalPage({ params }) {
         }),
       });
 
-      // Redireciona o usuário ao banco para autorizar.
-      window.location.href = data.consentRedirectUrl;
+      // Redireciona o usuário para o widget Klavi.
+      window.location.href = data.linkURL;
     } catch (e) {
       showMessage(e.message, 'error');
       setConnecting(false);
-      setSelectedConnector(null);
     }
   };
 
@@ -194,12 +171,11 @@ export default function PortalPage({ params }) {
   };
 
   const handleReconnect = (item) => {
-    const connector = connectors.find(c => c.institutionCode === item.institutionCode || c.name.toLowerCase() === (item.institutionName || '').toLowerCase());
-    if (connector) {
-      handleSelectConnector(connector);
-    } else {
-      showMessage('Instituição não encontrada na lista atual. Tente adicionar como novo banco.', 'error');
-    }
+    // Reconexão segue o mesmo fluxo de nova conexão: escolhe PF/PJ, preenche CPF/CNPJ e abre widget Klavi.
+    setSelectedTaxType(item.taxType || null);
+    setCnpjInput(item.businessTaxId ? formatCnpj(item.businessTaxId) : '');
+    setCpfInput(item.personalTaxId ? formatCpf(item.personalTaxId) : '');
+    setShowTaxIdsInput(true);
   };
 
   const removeBank = async (itemId, name) => {
@@ -304,7 +280,7 @@ export default function PortalPage({ params }) {
                     )}
                   </div>
                   <div className="flex items-center gap-1">
-                    {(connecting && selectedConnector?.institutionCode === item.institutionCode) || removingId === item.id ? (
+                    {removingId === item.id ? (
                       <Loader2 className="w-4 h-4 animate-spin text-gray-400" />
                     ) : null}
                     {(item.status === 'WAITING_DATA' || item.status === 'UPDATING') && (
@@ -423,56 +399,6 @@ export default function PortalPage({ params }) {
               <div className="flex gap-2 justify-end">
                 <button onClick={() => setShowTaxIdsInput(false)} className="px-4 py-2 text-sm text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50">Cancelar</button>
                 <button onClick={handleConfirmTaxIds} className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700">Continuar</button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Modal de seleção de instituição */}
-        {showConnectorSelector && (
-          <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
-            <div
-              className="absolute inset-0 bg-black/40"
-              onClick={() => setShowConnectorSelector(false)}
-            />
-            <div className="relative bg-white rounded-t-2xl sm:rounded-2xl w-full max-w-lg max-h-[85vh] flex flex-col shadow-2xl">
-              <div className="p-4 border-b border-gray-100 flex items-center justify-between">
-                <h3 className="text-base font-bold text-gray-900">Escolha o banco</h3>
-                <button
-                  onClick={() => setShowConnectorSelector(false)}
-                  className="text-gray-400 hover:text-gray-600 p-1"
-                >
-                  ✕
-                </button>
-              </div>
-              <div className="overflow-y-auto p-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {connectors.length === 0 ? (
-                  <div className="col-span-full flex justify-center py-8">
-                    <Loader2 className="w-6 h-6 text-blue-600 animate-spin" />
-                  </div>
-                ) : (
-                  connectors.map((connector) => (
-                    <button
-                      key={connector.institutionCode}
-                      onClick={() => handleSelectConnector(connector)}
-                      className="flex items-center gap-3 p-3 rounded-xl border border-gray-200 hover:border-blue-400 hover:bg-blue-50 transition-colors text-left"
-                    >
-                      {connector.avatar ? (
-                        <img
-                          src={connector.avatar}
-                          alt={connector.name}
-                          className="w-10 h-10 rounded-lg object-contain border border-gray-100 p-1"
-                        />
-                      ) : (
-                        <div className="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center">
-                          <Building2 className="w-5 h-5 text-blue-600" />
-                        </div>
-                      )}
-                      <span className="text-sm font-medium text-gray-800 flex-1">{connector.name}</span>
-                      <ExternalLink className="w-4 h-4 text-gray-300" />
-                    </button>
-                  ))
-                )}
               </div>
             </div>
           </div>
