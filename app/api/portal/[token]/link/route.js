@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { getClientByToken, addKlaviItem } from '@/lib/storage-company';
 import { getEmpresaByToken, registerItemLocation } from '@/lib/central-token-map';
 import { getCompanyPool } from '@/lib/company-db';
-import { createLink, getConsentList, requestBusinessInstitutionData, requestPersonalInstitutionData, DEFAULT_KLAVI_PRODUCTS } from '@/lib/klavi';
+import { createLink, getConsentList, getInstitutions, requestBusinessInstitutionData, requestPersonalInstitutionData, DEFAULT_KLAVI_PRODUCTS } from '@/lib/klavi';
 import { v4 as uuidv4 } from 'uuid';
 
 export const dynamic = 'force-dynamic';
@@ -49,6 +49,18 @@ export async function POST(request, { params }) {
     const link = await createLink(linkParams);
     console.log('[portal link] link criado:', link?.linkId);
 
+    // Busca nomes das instituições para preencher corretamente quando o consentimento não traz nome.
+    let institutionsByCode = {};
+    try {
+      const institutions = await getInstitutions(link.linkToken);
+      const list = Array.isArray(institutions) ? institutions : (institutions?.institutions || []);
+      institutionsByCode = Object.fromEntries(
+        list.map(i => [String(i.institutionCode || i.code || '').toLowerCase(), i.name || i.institutionName || null])
+      );
+    } catch (instErr) {
+      console.warn('[portal link] falha ao buscar instituições:', instErr.message);
+    }
+
     // Verifica se já existem consentimentos autorizados para reutilizar.
     // Isso evita o erro de "limite de consentimentos atingido" no widget.
     try {
@@ -57,7 +69,10 @@ export async function POST(request, { params }) {
       const listData = await getConsentList(listParams);
       const existingConsents = Array.isArray(listData) ? listData : (listData?.consents || []);
       const authorised = existingConsents.filter(
-        c => ['authorised', 'authorized'].includes(String(c.status).toLowerCase())
+        c => ['authorised', 'authorized'].includes(String(c.status).toLowerCase()) &&
+          // Garante que o consentimento pertence ao CNPJ atual (PJ) ou ao CPF atual (PF).
+          // A Klavi pode retornar consentimentos de outros CNPJs vinculados ao mesmo CPF.
+          (!businessTaxId || String(c.businessTaxId || c.businesstaxid || '') === String(businessTaxId))
       );
 
       if (authorised.length > 0) {
@@ -67,7 +82,9 @@ export async function POST(request, { params }) {
           try {
             const itemId = uuidv4();
             const institutionCode = consent.institutionCode || consent.institution_code;
-            const institutionName = consent.institutionName || consent.institution_name || `Banco ${institutionCode}`;
+            const institutionName = consent.institutionName || consent.institution_name ||
+              institutionsByCode[String(institutionCode).toLowerCase()] ||
+              `Banco ${institutionCode}`;
             const item = await addKlaviItem(pool, {
               id: itemId,
               clientId: client.id,
