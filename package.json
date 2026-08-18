@@ -6,7 +6,9 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "setup-db": "node scripts/setup-db.mjs"
+    "setup-db": "node scripts/setup-db.mjs",
+    "batch-sync": "node scripts/batch-sync.mjs",
+    "docker:build:batch": "docker build -f Dockerfile.batch -t extrator-bancario-sync ."
   },
   "dependencies": {
     "lucide-react": "^0.378.0",

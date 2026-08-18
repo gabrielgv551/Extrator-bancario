@@ -1,0 +1,87 @@
+name: Build e Push Imagem Batch
+
+# Builda e publica a imagem Docker do sync do Extrator Bancário no ECR.
+# O AWS Batch usará essa imagem via job definition.
+
+on:
+  push:
+    branches: [main, master]
+    paths:
+      - 'lib/**'
+      - 'scripts/**'
+      - 'Dockerfile.batch'
+      - '.github/workflows/build-batch-image.yml'
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: 'Tag da imagem (padrão: sha do commit)'
+        required: false
+        default: ''
+
+env:
+  AWS_REGION: ${{ vars.AWS_REGION || 'us-east-1' }}
+  ECR_REPOSITORY: ${{ vars.ECR_REPOSITORY }}
+  BATCH_JOB_DEFINITION: ${{ vars.BATCH_JOB_DEFINITION || 'extrator-bancario-sync' }}
+
+jobs:
+  build-and-push:
+    name: Build e Push para ECR
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Checkout do código
+        uses: actions/checkout@v4
+
+      - name: Configurar credenciais AWS via OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login no Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Gerar tag da imagem
+        id: tag
+        run: |
+          if [ -n "${{ github.event.inputs.image_tag }}" ]; then
+            echo "IMAGE_TAG=${{ github.event.inputs.image_tag }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "IMAGE_TAG=${{ github.sha }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build e Push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile.batch
+          push: true
+          tags: |
+            ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ steps.tag.outputs.IMAGE_TAG }}
+            ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          platforms: linux/amd64
+
+      - name: Atualizar AWS Batch Job Definition
+        if: ${{ env.BATCH_JOB_DEFINITION != '' }}
+        run: |
+          echo "Registrando nova revisão da job definition ${{ env.BATCH_JOB_DEFINITION }}..."
+          ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+          sed \
+            -e "s|__AWS_ACCOUNT_ID__|$ACCOUNT_ID|g" \
+            -e "s|__AWS_REGION__|${{ env.AWS_REGION }}|g" \
+            -e "s|__IMAGE_TAG__|${{ steps.tag.outputs.IMAGE_TAG }}|g" \
+            aws/batch-job-definition.json > /tmp/batch-job-definition.json
+          aws batch register-job-definition --cli-input-json file:///tmp/batch-job-definition.json
+
+      - name: Resumo
+        run: |
+          echo "Imagem publicada: ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ steps.tag.outputs.IMAGE_TAG }}"

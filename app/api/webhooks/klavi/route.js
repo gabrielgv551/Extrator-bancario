@@ -4,7 +4,7 @@ import {
   updateItemStatus, recordWebhookEvent, hasWebhookEvent, recordKlaviWebhookDebug,
   upsertTransactionsBatch, upsertCreditTransactionsBatch,
   upsertInvestments, upsertDebts, upsertDerivedDebts,
-  softDeleteItem, markItemNotified,
+  softDeleteItem, markItemNotified, deduplicateKlaviTransactions,
 } from '@/lib/storage-company';
 import { getEmpresaByItem } from '@/lib/central-token-map';
 import { getCompanyPool } from '@/lib/company-db';
@@ -107,8 +107,15 @@ async function persistReport(pool, localItem, payload) {
     : 0;
   await upsertDerivedDebts(pool, localItem.clientId).catch(() => {});
 
-  console.log('[klavi webhook] relatório persistido item=%s product=%s bank=%d credit=%d inv=%d debts=%d',
-    localItem.id, productName, savedBank, savedCredit, savedInv, savedDebts);
+  // A Klavi/Open Finance pode gerar IDs diferentes para a mesma transação quando ela
+  // muda de PROCESSANDO/PENDING para EFETIVADA/POSTED. Remove duplicatas conservadoramente.
+  const dedup = await deduplicateKlaviTransactions(pool, localItem.clientId).catch(err => {
+    console.error('[klavi webhook] erro ao deduplicar transações item=%s:', localItem.id, err.message);
+    return { removedPending: 0, removedInstallments: 0 };
+  });
+
+  console.log('[klavi webhook] relatório persistido item=%s product=%s bank=%d credit=%d inv=%d debts=%d dedup=%j',
+    localItem.id, productName, savedBank, savedCredit, savedInv, savedDebts, dedup);
 
   // Atualiza números de conta para exibição no portal.
   const accountNumbers = mapped.accounts.map(a => a.number).filter(Boolean);

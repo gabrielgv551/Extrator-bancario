@@ -51,6 +51,7 @@ app/
     webhooks/pluggy/route.js        → Recebe webhooks da Pluggy
 
 lib/
+  cron-sync.js                      → Motor de sincronização multi-tenant (Klavi + Pluggy) reutilizável entre cron, scripts e AWS Batch
   pluggy.js                         → Wrapper da API Pluggy (auth, contas, transações, investimentos, dívidas)
   storage.js                        → Camada de persistência PostgreSQL (clients, items, transactions, investments, debts, sync_logs, sync_locks)
 
@@ -58,11 +59,23 @@ scripts/
   setup-db.mjs                      → Cria banco e tabelas PostgreSQL
   setup-db.mjs                      → Cria banco e tabelas PostgreSQL
   migrate-items-status.mjs          → Migra schema para status/erro dos itens
-  sync.mjs                          → Sincronização standalone (sem timeout Vercel)
+  sync.mjs                          → Sincronização standalone Pluggy single-tenant (sem timeout Vercel)
+  batch-sync.mjs                    → Sincronização standalone multi-tenant (Klavi + Pluggy) para AWS Batch
   backfill.mjs                      → Backfill histórico de transações
   link-empresas.mjs                 → Vincula clientes a empresas do Have Gestor
   debug_pagination.mjs              → Debug de paginação da Pluggy
   validar_extrato.py                → Valida extrato Pluggy vs banco de dados (Python)
+
+airflow/dags/
+  extrator_bancario_sync.py        → DAG que submete o sync diário ao AWS Batch
+
+aws/
+  batch-job-definition.json        → Template de AWS Batch Job Definition
+
+.github/workflows/
+  build-batch-image.yml            → Builda a imagem Docker no push e publica no ECR
+
+Dockerfile.batch                   → Imagem Docker para execução no AWS Batch
 
 gestor.config.js                    → Lista de empresas do Have Gestor
 middleware.js                       → Proteção de rotas administrativas
@@ -218,6 +231,32 @@ node scripts/link-empresas.mjs set "Nome Cliente" empresa
 ### Netlify
 - Configurado via `netlify.toml` com `@netlify/plugin-nextjs`.
 - Node version 20.
+
+### AWS Batch + Airflow (sync pesado)
+Para sincronizações que extrapolam o timeout serverless da Vercel, use o motor standalone containerizado:
+
+```bash
+# Build da imagem Docker
+npm run docker:build:batch
+
+# Rodar localmente (todas as empresas ativas)
+node scripts/batch-sync.mjs
+
+# Rodar localmente para uma empresa específica
+EMPRESA=marcon node scripts/batch-sync.mjs
+```
+
+Passos de deploy:
+1. Configure os secrets/vars do repositório GitHub:
+   - `AWS_ROLE_ARN` (OIDC role para publicar no ECR)
+   - `vars.AWS_REGION`, `vars.ECR_REPOSITORY`, `vars.BATCH_JOB_DEFINITION`
+2. Ajuste `aws/batch-job-definition.json` com os ARNs corretos das roles e secrets do Secrets Manager.
+3. A cada push na `main`, o workflow `.github/workflows/build-batch-image.yml` builda a imagem, publica no ECR e registra uma nova revisão da job definition.
+4. Crie uma fila de jobs no AWS Batch (ex: `extrator-bancario-queue`).
+5. Copie `airflow/dags/extrator_bancario_sync.py` para o bucket/pasta de DAGs do Airflow.
+6. Configure as variáveis do Airflow: `EXTRATOR_BATCH_JOB_DEFINITION` e `EXTRATOR_BATCH_JOB_QUEUE`.
+
+O DAG dispara o job diariamente às 07:00 UTC (04:00 BRT), preservando a mesma cadência do `vercel.json`.
 
 ---
 

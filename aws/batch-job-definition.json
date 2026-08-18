@@ -1,0 +1,48 @@
+{
+  "comment": "Template de AWS Batch Job Definition para o sync do Extrator Bancário. Substitua __AWS_ACCOUNT_ID__, __AWS_REGION__ e __IMAGE_TAG__. Credenciais devem vir do AWS Secrets Manager. Registro: aws batch register-job-definition --cli-input-json file://aws/batch-job-definition.json",
+  "jobDefinitionName": "extrator-bancario-sync",
+  "type": "container",
+  "containerProperties": {
+    "image": "__AWS_ACCOUNT_ID__.dkr.ecr.__AWS_REGION__.amazonaws.com/extrator-bancario:__IMAGE_TAG__",
+    "vcpus": 1,
+    "memory": 2048,
+    "command": ["node", "scripts/batch-sync.mjs"],
+    "jobRoleArn": "arn:aws:iam::__AWS_ACCOUNT_ID__:role/ExtratorBancarioBatchJobRole",
+    "executionRoleArn": "arn:aws:iam::__AWS_ACCOUNT_ID__:role/ExtratorBancarioBatchExecutionRole",
+    "environment": [
+      { "name": "NODE_ENV", "value": "production" },
+      { "name": "CENTRAL_DB_HOST", "value": "DB_HOST_AQUI" },
+      { "name": "CENTRAL_DB_PORT", "value": "5432" },
+      { "name": "CENTRAL_DB_NAME", "value": "have_gestor" },
+      { "name": "CENTRAL_DB_USER", "value": "postgres" },
+      { "name": "POSTGRES_SSL", "value": "true" },
+      { "name": "KLAVI_API_BASE", "value": "https://api.klavi.ai/data/v1" },
+      { "name": "KLAVI_WEBHOOK_URL", "value": "https://SEU_DOMINIO/api/webhooks/klavi" }
+    ],
+    "secrets": [
+      { "name": "CENTRAL_DB_PASSWORD", "valueFrom": "arn:aws:secretsmanager:__AWS_REGION__::__AWS_ACCOUNT_ID__:secret:extrator-bancario/db-password" },
+      { "name": "PLUGGY_CLIENT_ID", "valueFrom": "arn:aws:secretsmanager:__AWS_REGION__::__AWS_ACCOUNT_ID__:secret:extrator-bancario/pluggy-client-id" },
+      { "name": "PLUGGY_CLIENT_SECRET", "valueFrom": "arn:aws:secretsmanager:__AWS_REGION__::__AWS_ACCOUNT_ID__:secret:extrator-bancario/pluggy-client-secret" },
+      { "name": "KLAVI_ACCESS_KEY", "valueFrom": "arn:aws:secretsmanager:__AWS_REGION__::__AWS_ACCOUNT_ID__:secret:extrator-bancario/klavi-access-key" },
+      { "name": "KLAVI_SECRET_KEY", "valueFrom": "arn:aws:secretsmanager:__AWS_REGION__::__AWS_ACCOUNT_ID__:secret:extrator-bancario/klavi-secret-key" },
+      { "name": "KLAVI_WEBHOOK_SECRET", "valueFrom": "arn:aws:secretsmanager:__AWS_REGION__::__AWS_ACCOUNT_ID__:secret:extrator-bancario/klavi-webhook-secret" },
+      { "name": "CONFIG_ENCRYPTION_KEY", "valueFrom": "arn:aws:secretsmanager:__AWS_REGION__::__AWS_ACCOUNT_ID__:secret:extrator-bancario/config-encryption-key" }
+    ],
+    "logConfiguration": {
+      "logDriver": "awslogs",
+      "options": {
+        "awslogs-group": "/aws/batch/extrator-bancario-sync",
+        "awslogs-region": "__AWS_REGION__",
+        "awslogs-stream-prefix": "sync"
+      }
+    }
+  },
+  "retryStrategy": {
+    "attempts": 2,
+    "evaluateOnExit": [
+      { "onStatusReason": "Essential container in task exited", "action": "RETRY" },
+      { "onReason": "AnyPurpose", "action": "EXIT" }
+    ]
+  },
+  "timeout": { "attemptDurationSeconds": 7200 }
+}

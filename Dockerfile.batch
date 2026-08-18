@@ -1,0 +1,20 @@
+# Imagem para execução do sync do Extrator Bancário em AWS Batch.
+# Não inclui o frontend Next.js; apenas o runtime Node + scripts/lib necessários.
+
+FROM node:18-alpine
+
+WORKDIR /app
+
+# Instala dependências de runtime (pg, uuid etc.).
+COPY package.json package-lock.json* ./
+RUN npm ci --omit=dev
+
+# Código fonte necessário para o sync.
+COPY lib ./lib
+COPY scripts ./scripts
+
+ENV NODE_ENV=production
+
+# O comando padrão roda o sync de todas as empresas ativas.
+# Pode ser sobrescrito pelo AWS Batch (ex: para passar clientId ou EMPRESA).
+CMD ["node", "scripts/batch-sync.mjs"]
