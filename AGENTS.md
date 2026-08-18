@@ -68,6 +68,7 @@ scripts/
 
 airflow/dags/
   extrator_bancario_sync.py        → DAG que submete o sync diário ao AWS Batch
+  extrator_bancario_sync_ssh.py    → DAG que roda o sync via SSH na EC2 dos motores
 
 aws/
   batch-job-definition.json        → Template de AWS Batch Job Definition
@@ -257,6 +258,17 @@ Passos de deploy:
 6. Configure as variáveis do Airflow: `EXTRATOR_BATCH_JOB_DEFINITION` e `EXTRATOR_BATCH_JOB_QUEUE`.
 
 O DAG dispara o job diariamente às 07:00 UTC (04:00 BRT), preservando a mesma cadência do `vercel.json`.
+
+#### Airflow + SSH (sem AWS Batch)
+Se já tiver uma EC2 rodando os motores e quiser orquestrar o sync pelo Airflow sem montar AWS Batch:
+
+1. Clone o repo na EC2 e configure o `.env`.
+2. Copie `airflow/dags/extrator_bancario_sync_ssh.py` para o Airflow.
+3. Configure a conexão SSH `ssh_extrator_bancario` apontando para a EC2.
+4. (Opcional) Configure a variável `EXTRATOR_SYNC_REPO_DIR` (padrão `/opt/Extrator-bancario`).
+5. (Opcional) Configure `EXTRATOR_SYNC_EMPRESA` para sincronizar só uma empresa.
+
+O DAG dá `git pull` antes de cada execução e roda `node scripts/batch-sync.mjs` via SSH.
 
 ---
 
