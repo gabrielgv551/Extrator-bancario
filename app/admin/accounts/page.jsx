@@ -48,6 +48,8 @@ export default function AccountsListPage() {
       (a.clientName || '').toLowerCase().includes(term) ||
       (a.businessTaxId || '').toLowerCase().includes(term) ||
       (a.bank || '').toLowerCase().includes(term) ||
+      (a.conta || '').toLowerCase().includes(term) ||
+      (a.cartao || '').toLowerCase().includes(term) ||
       (a.status || '').toLowerCase().includes(term) ||
       (a.rawStatus || '').toLowerCase().includes(term) ||
       (a.executionStatus || '').toLowerCase().includes(term) ||
@@ -98,6 +100,8 @@ export default function AccountsListPage() {
       'Cliente',
       'CNPJ',
       'Banco',
+      'Conta',
+      'Cartão',
       'Status da Conexão',
       'Execution Status',
       'Código de Erro',
@@ -109,6 +113,8 @@ export default function AccountsListPage() {
       a.clientName,
       a.businessTaxId || '',
       a.bank,
+      a.conta,
+      a.cartao,
       a.rawStatus,
       a.executionStatus,
       a.errorCode || '',
@@ -214,6 +220,8 @@ export default function AccountsListPage() {
                 <th className="px-5 py-3 font-semibold text-gray-600">Cliente</th>
                 <th className="px-5 py-3 font-semibold text-gray-600">CNPJ</th>
                 <th className="px-5 py-3 font-semibold text-gray-600">Banco</th>
+                <th className="px-5 py-3 font-semibold text-gray-600">Conta</th>
+                <th className="px-5 py-3 font-semibold text-gray-600">Cartão</th>
                 <th className="px-5 py-3 font-semibold text-gray-600">Status da Conexão</th>
                 <th className="px-5 py-3 font-semibold text-gray-600">Situação</th>
                 <th className="px-5 py-3 font-semibold text-gray-600">Última Sync</th>
@@ -256,6 +264,8 @@ export default function AccountsListPage() {
                     ))}
                   </select>
                 </th>
+                <th className="px-5 py-2 font-normal"></th>
+                <th className="px-5 py-2 font-normal"></th>
                 <th className="px-5 py-2 font-normal">
                   <select
                     value={filters.statusConexao}
@@ -286,13 +296,13 @@ export default function AccountsListPage() {
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={7} className="text-center py-12 text-gray-400">
+                  <td colSpan={9} className="text-center py-12 text-gray-400">
                     Carregando contas...
                   </td>
                 </tr>
               ) : filteredAccounts.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="text-center py-12 text-gray-400">
+                  <td colSpan={9} className="text-center py-12 text-gray-400">
                     {search ? 'Nenhuma conta encontrada' : 'Nenhuma conta cadastrada.'}
                   </td>
                 </tr>
@@ -303,6 +313,8 @@ export default function AccountsListPage() {
                     <td className="px-5 py-3 text-gray-700">{account.clientName}</td>
                     <td className="px-5 py-3 text-gray-700 text-xs">{account.businessTaxId || '—'}</td>
                     <td className="px-5 py-3 text-gray-700">{account.bank}</td>
+                    <td className="px-5 py-3 text-gray-700 font-mono text-xs">{account.conta}</td>
+                    <td className="px-5 py-3 text-gray-700 font-mono text-xs">{account.cartao}</td>
                     <td className="px-5 py-3 text-gray-700 text-xs">
                       <div className="font-medium">{account.rawStatus}</div>
                       {account.executionStatus && account.executionStatus !== account.rawStatus && (
