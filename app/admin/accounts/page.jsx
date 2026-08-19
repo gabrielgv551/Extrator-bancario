@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Search, Building2, ArrowLeft, LogOut } from 'lucide-react';
+import { Search, Building2, ArrowLeft, LogOut, FileSpreadsheet } from 'lucide-react';
 
 export default function AccountsListPage() {
   const router = useRouter();
@@ -62,6 +62,48 @@ export default function AccountsListPage() {
     router.push('/login');
   };
 
+  const escapeCsv = (value) => {
+    const text = value === null || value === undefined ? '' : String(value);
+    if (text.includes(',') || text.includes('"') || text.includes('\n')) {
+      return `"${text.replace(/"/g, '""')}"`;
+    }
+    return text;
+  };
+
+  const exportToExcel = () => {
+    const headers = [
+      'Empresa',
+      'Cliente',
+      'Banco',
+      'Status da Conexão',
+      'Execution Status',
+      'Código de Erro',
+      'Situação',
+      'Última Sync',
+    ];
+    const rows = filteredAccounts.map((a) => [
+      a.empresaNome,
+      a.clientName,
+      a.bank,
+      a.rawStatus,
+      a.executionStatus,
+      a.errorCode || '',
+      a.status,
+      formatDate(a.lastSync),
+    ]);
+
+    const csv = [headers, ...rows].map((row) => row.map(escapeCsv).join(',')).join('\n');
+    const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `contas_${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <div className="min-h-screen bg-gray-50">
       <header className="bg-white border-b border-gray-200 sticky top-0 z-10">
@@ -76,6 +118,15 @@ export default function AccountsListPage() {
             </div>
           </div>
           <div className="flex items-center gap-2">
+            <button
+              onClick={exportToExcel}
+              disabled={filteredAccounts.length === 0}
+              className="flex items-center gap-2 text-green-700 border border-green-200 bg-green-50 px-3 py-2 rounded-lg text-sm hover:bg-green-100 disabled:opacity-50 transition-colors"
+              title="Exportar lista para Excel (CSV)"
+            >
+              <FileSpreadsheet className="w-4 h-4" />
+              Excel
+            </button>
             <Link
               href="/"
               className="flex items-center gap-2 text-gray-600 border border-gray-300 px-3 py-2 rounded-lg text-sm hover:bg-gray-50 transition-colors"
