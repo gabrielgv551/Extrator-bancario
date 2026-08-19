@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { getClientByToken, addKlaviItem, getItemByKlaviLinkId, updateItemStatus } from '@/lib/storage-company';
 import { getEmpresaByToken, registerItemLocation } from '@/lib/central-token-map';
 import { getCompanyPool } from '@/lib/company-db';
-import { requestBusinessInstitutionData, DEFAULT_KLAVI_PRODUCTS } from '@/lib/klavi';
+import { requestBusinessInstitutionData, requestPersonalInstitutionData, getConsentList, isPlaceholderInstitutionName, DEFAULT_KLAVI_PRODUCTS } from '@/lib/klavi';
 import { v4 as uuidv4 } from 'uuid';
 
 export const dynamic = 'force-dynamic';
@@ -51,7 +51,7 @@ export async function GET(request, { params }) {
         klaviLinkId: linkId,
         klaviConsentId: null,
         institutionCode: null,
-        institutionName: 'Banco conectado',
+        institutionName: 'Banco em conexão',
         institutionLogo: null,
         accountNumbers: null,
         businessTaxId: null,
@@ -64,20 +64,70 @@ export async function GET(request, { params }) {
       }).catch(err => console.error('[portal/callback] falha ao registrar item location:', err.message));
     }
 
+    // Se recebemos consentId, consulta a API Klavi para preencher institutionCode/name/logo o quanto antes.
+    const logMeta = { pool, source: 'portal', clientId: client.id, itemId: item.id, linkId, consentId };
+
+    if (consentId) {
+      try {
+        const listParams = {};
+        const isPF = item.taxType === 'pf';
+        const businessTaxId = item.businessTaxId || client.businessTaxId;
+        const personalTaxId = item.personalTaxId || client.personalTaxId;
+        if (!isPF && businessTaxId) listParams.businessTaxId = businessTaxId;
+        if (personalTaxId) listParams.personalTaxId = personalTaxId;
+        if (linkId) listParams.linkId = linkId;
+
+        const listData = await getConsentList(listParams, logMeta);
+        const consents = Array.isArray(listData) ? listData : (listData?.consents || []);
+        const consent = consents.find(c =>
+          String(c.consentId || c.consentid || '').toLowerCase() === String(consentId).toLowerCase() ||
+          String(c.linkId || c.linkid || '').toLowerCase() === String(linkId).toLowerCase()
+        );
+
+        if (consent) {
+          const institutionCode = consent.institutionCode || consent.institution_code || null;
+          const institutionName = consent.institutionName || consent.institution_name || null;
+          const institutionLogo = consent.institutionLogo || consent.institution_logo || null;
+          const updates = {};
+          const shouldUpdateInstitution = isPlaceholderInstitutionName(item.institutionName) ||
+            isPlaceholderInstitutionName(item.institutionCode);
+
+          if (institutionCode && (!item.institutionCode || shouldUpdateInstitution)) updates.institutionCode = institutionCode;
+          if (institutionName && (!item.institutionName || isPlaceholderInstitutionName(item.institutionName))) updates.institutionName = institutionName;
+          if (institutionLogo && (!item.institutionLogo || isPlaceholderInstitutionName(item.institutionName))) updates.institutionLogo = institutionLogo;
+
+          if (Object.keys(updates).length > 0) {
+            await updateItemStatus(pool, item.id, updates);
+            item = { ...item, ...updates };
+            console.log('[portal callback] item=%s atualizado com dados do consentimento: %j', item.id, updates);
+          }
+        }
+      } catch (consentErr) {
+        console.warn('[portal callback] falha ao buscar detalhes do consentimento (não crítica):', consentErr.message);
+      }
+    }
+
     // Solicita relatório. O webhook de consent/authorised também pode disparar, mas
     // fazemos a solicitação explícita aqui para garantir.
     // No fluxo widget-first, a instituição pode não ser conhecida ainda (item criado sem institutionCode).
     const businessTaxId = item.businessTaxId || client.businessTaxId;
-    if (businessTaxId && item.institutionCode) {
+    const personalTaxId = item.personalTaxId || client.personalTaxId;
+    if (item.institutionCode && (businessTaxId || personalTaxId)) {
       try {
-        await requestBusinessInstitutionData({
-          businessTaxId,
+        const requestBody = {
           institutionCode: item.institutionCode,
           linkId,
           consentIds: consentId ? [consentId] : [],
           products: DEFAULT_KLAVI_PRODUCTS,
           productsCallbackUrl: process.env.KLAVI_WEBHOOK_URL || null,
-        });
+        };
+        if (item.taxType === 'pf' && personalTaxId) {
+          await requestPersonalInstitutionData({ ...requestBody, personalTaxId }, { ...logMeta, personalTaxId, institutionCode: item.institutionCode });
+        } else if (businessTaxId) {
+          await requestBusinessInstitutionData({ ...requestBody, businessTaxId }, { ...logMeta, businessTaxId, institutionCode: item.institutionCode });
+        } else {
+          console.log('[portal callback] CPF/CNPJ não disponíveis para solicitar relatório. linkId=%s', linkId);
+        }
       } catch (err) {
         console.error('[portal callback] falha ao solicitar relatório (não crítica):', err);
         // Não retorna erro: o webhook pode completar o processo.

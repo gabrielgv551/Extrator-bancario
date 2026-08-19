@@ -45,14 +45,16 @@ export async function POST(request, { params }) {
     };
     if (!isPF && businessTaxId) linkParams.businessTaxId = businessTaxId;
 
+    const logMeta = { pool, source: 'portal', clientId: client.id };
+
     console.log('[portal link] criando link com params:', JSON.stringify(linkParams));
-    const link = await createLink(linkParams);
+    const link = await createLink(linkParams, logMeta);
     console.log('[portal link] link criado:', link?.linkId);
 
     // Busca nomes das instituições para preencher corretamente quando o consentimento não traz nome.
     let institutionsByCode = {};
     try {
-      const institutions = await getInstitutions(link.linkToken);
+      const institutions = await getInstitutions(link.linkToken, { ...logMeta, linkId: link.linkId });
       const list = Array.isArray(institutions) ? institutions : (institutions?.institutions || []);
       institutionsByCode = Object.fromEntries(
         list.map(i => [String(i.institutionCode || i.code || '').toLowerCase(), i.name || i.institutionName || null])
@@ -66,7 +68,7 @@ export async function POST(request, { params }) {
     try {
       const listParams = { personalTaxId };
       if (!isPF && businessTaxId) listParams.businessTaxId = businessTaxId;
-      const listData = await getConsentList(listParams);
+      const listData = await getConsentList(listParams, logMeta);
       const existingConsents = Array.isArray(listData) ? listData : (listData?.consents || []);
 
       // Ignora consentimentos que já estão conectados localmente; senão o portal
@@ -129,9 +131,23 @@ export async function POST(request, { params }) {
               productsCallbackUrl,
             };
             if (isPF) {
-              await requestPersonalInstitutionData({ ...requestBody, personalTaxId });
+              await requestPersonalInstitutionData({ ...requestBody, personalTaxId }, {
+                ...logMeta,
+                itemId: item.id,
+                linkId: item.klaviLinkId,
+                consentId: item.klaviConsentId,
+                personalTaxId,
+                institutionCode,
+              });
             } else {
-              await requestBusinessInstitutionData({ ...requestBody, businessTaxId });
+              await requestBusinessInstitutionData({ ...requestBody, businessTaxId }, {
+                ...logMeta,
+                itemId: item.id,
+                linkId: item.klaviLinkId,
+                consentId: item.klaviConsentId,
+                businessTaxId,
+                institutionCode,
+              });
             }
 
             reusedItems.push({ itemId: item.id, institutionCode, institutionName });

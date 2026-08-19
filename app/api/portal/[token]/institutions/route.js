@@ -17,12 +17,13 @@ export async function GET(_, { params }) {
   if (!client) return NextResponse.json({ error: 'Portal não encontrado' }, { status: 404 });
 
   try {
+    const logMeta = { pool, source: 'portal', clientId: client.id };
     // Criamos um link temporário apenas para listar instituições (sem CNPJ obrigatório neste momento).
     const redirectUrl = `${process.env.KLAVI_WEBHOOK_URL || ''}`; // não usado aqui
     console.log('[portal institutions] criando link em', process.env.KLAVI_API_BASE);
-    const link = await createLink({ redirectUrl });
+    const link = await createLink({ redirectUrl }, logMeta);
     console.log('[portal institutions] link criado', link?.linkId);
-    const institutions = await getInstitutions(link.linkToken);
+    const institutions = await getInstitutions(link.linkToken, { ...logMeta, linkId: link.linkId });
     console.log('[portal institutions] instituições', institutions?.length);
 
     return NextResponse.json({

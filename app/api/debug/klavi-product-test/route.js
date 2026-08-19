@@ -121,11 +121,22 @@ export async function POST(request) {
         productsCallbackUrl: process.env.KLAVI_WEBHOOK_URL || null,
       };
 
+      const logMeta = {
+        pool,
+        source: 'debug',
+        clientId: item.clientId,
+        itemId: item.id,
+        linkId: item.klaviLinkId,
+        consentId: item.klaviConsentId,
+        businessTaxId: isBusiness ? taxId : undefined,
+        personalTaxId: !isBusiness ? taxId : undefined,
+        institutionCode: item.institutionCode,
+      };
       const startedAt = Date.now();
       try {
         const response = isBusiness
-          ? await requestBusinessInstitutionData(requestBody)
-          : await requestPersonalInstitutionData(requestBody);
+          ? await requestBusinessInstitutionData(requestBody, logMeta)
+          : await requestPersonalInstitutionData(requestBody, logMeta);
         results.push({
           product,
           success: true,

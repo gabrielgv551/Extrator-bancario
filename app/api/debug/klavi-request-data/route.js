@@ -40,6 +40,15 @@ export async function POST(request) {
         products: body.products || DEFAULT_PRODUCTS,
         productsCallbackUrl: process.env.KLAVI_WEBHOOK_URL || null,
         externalInfo: body.transactionPeriod ? { transactionPeriod: body.transactionPeriod } : undefined,
+      }, {
+        pool,
+        source: 'debug',
+        clientId: item.clientId,
+        itemId: item.id,
+        linkId: item.klaviLinkId,
+        consentId: item.klaviConsentId,
+        businessTaxId: item.businessTaxId,
+        institutionCode: item.institutionCode,
       });
     } catch (klaviErr) {
       console.error('[debug klavi-request-data] erro na Klavi:', klaviErr);

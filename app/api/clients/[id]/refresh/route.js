@@ -60,6 +60,9 @@ export async function POST(request, { params }) {
         item,
         businessTaxId: itemBusinessTaxId,
         personalTaxId: item.personalTaxId || undefined,
+        pool,
+        source: 'refresh',
+        clientId: client.id,
       });
       console.log('[refresh] consentimento ativo item=%s consentId=%s linkId=%s products=%j',
         item.id, activeConsent.consentId, activeConsent.linkId, activeConsent.products);
@@ -103,11 +106,31 @@ export async function POST(request, { params }) {
             });
             continue;
           }
+          const logMeta = {
+            pool,
+            source: 'refresh',
+            clientId: client.id,
+            itemId: item.id,
+            linkId: activeConsent.linkId,
+            consentId: activeConsent.consentId,
+            personalTaxId,
+            institutionCode: item.institutionCode,
+          };
           console.log('[refresh] solicitando dados Klavi PF:', JSON.stringify({ ...requestBody, personalTaxId }));
-          await requestPersonalInstitutionData({ ...requestBody, personalTaxId });
+          await requestPersonalInstitutionData({ ...requestBody, personalTaxId }, logMeta);
         } else {
+          const logMeta = {
+            pool,
+            source: 'refresh',
+            clientId: client.id,
+            itemId: item.id,
+            linkId: activeConsent.linkId,
+            consentId: activeConsent.consentId,
+            businessTaxId: itemBusinessTaxId,
+            institutionCode: item.institutionCode,
+          };
           console.log('[refresh] solicitando dados Klavi PJ:', JSON.stringify({ ...requestBody, businessTaxId: itemBusinessTaxId }));
-          await requestBusinessInstitutionData({ ...requestBody, businessTaxId: itemBusinessTaxId });
+          await requestBusinessInstitutionData({ ...requestBody, businessTaxId: itemBusinessTaxId }, logMeta);
         }
 
         await updateItemStatus(pool, item.id, { status: 'UPDATING' });

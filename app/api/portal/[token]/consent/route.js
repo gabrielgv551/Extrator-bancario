@@ -37,11 +37,13 @@ export async function POST(request, { params }) {
 
     // Verifica se já existe consentimento pendente para o mesmo CPF/CNPJ + instituição.
     // Evita atingir o limite de consentimentos da Klavi criando um novo a cada clique.
+    const logMeta = { pool, source: 'portal', clientId: client.id };
+
     let existingConsents = [];
     try {
       const listParams = { personalTaxId };
       if (!isPF && businessTaxId) listParams.businessTaxId = businessTaxId;
-      const listData = await getConsentList(listParams);
+      const listData = await getConsentList(listParams, logMeta);
       console.log('[portal consent] lista de consentimentos:', JSON.stringify(listData).slice(0, 2000));
       existingConsents = Array.isArray(listData) ? listData : (listData?.consents || []);
     } catch (err) {
@@ -72,7 +74,7 @@ export async function POST(request, { params }) {
       if (!linkId || !linkToken) {
         const linkParams = { personalTaxId, redirectUrl, productsCallbackUrl };
         if (!isPF && businessTaxId) linkParams.businessTaxId = businessTaxId;
-        const link = await createLink(linkParams);
+        const link = await createLink(linkParams, logMeta);
         linkId = link.linkId;
         linkToken = link.linkToken;
       }
@@ -86,7 +88,7 @@ export async function POST(request, { params }) {
       };
       if (!isPF && businessTaxId) consentParams.businessTaxId = businessTaxId;
 
-      const consent = await createConsent(consentParams);
+      const consent = await createConsent(consentParams, { ...logMeta, linkId, institutionCode });
 
       return {
         linkId,
@@ -119,7 +121,7 @@ export async function POST(request, { params }) {
       try {
         const listParams = { personalTaxId };
         if (!isPF && businessTaxId) listParams.businessTaxId = businessTaxId;
-        const listData = await getConsentList(listParams);
+        const listData = await getConsentList(listParams, logMeta);
         allConsents = Array.isArray(listData) ? listData : (listData?.consents || []);
       } catch (err) {
         console.warn('[portal consent] falha ao listar consentimentos para limpeza:', err.message);
@@ -141,7 +143,7 @@ export async function POST(request, { params }) {
       let deleted = 0;
       for (const c of deletable.sort(sortByDate)) {
         try {
-          await deleteConsent(c.consentId || c.consentid);
+          await deleteConsent(c.consentId || c.consentid, logMeta);
           deleted++;
         } catch (err) {
           console.warn('[portal consent] falha ao deletar consentimento=%s status=%s:', c.consentId || c.consentid, c.status, err.message);
@@ -158,7 +160,7 @@ export async function POST(request, { params }) {
         .sort(sortByDate);
       for (const c of authorised) {
         try {
-          await deleteConsent(c.consentId || c.consentid);
+          await deleteConsent(c.consentId || c.consentid, logMeta);
           authorisedDeleted++;
         } catch (err) {
           console.warn('[portal consent] falha ao revogar consentimento autorizado=%s status=%s:', c.consentId || c.consentid, c.status, err.message);

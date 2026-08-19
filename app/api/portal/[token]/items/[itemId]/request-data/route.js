@@ -27,6 +27,16 @@ export async function POST(request, { params }) {
     return NextResponse.json({ error: 'Item incompleto para solicitar dados' }, { status: 400 });
   }
 
+  const logMeta = {
+    pool,
+    source: 'portal',
+    clientId: client.id,
+    itemId: item.id,
+    linkId: item.klaviLinkId,
+    consentId: item.klaviConsentId,
+    institutionCode: item.institutionCode,
+  };
+
   try {
     if (item.taxType === 'pf') {
       if (!item.personalTaxId) {
@@ -39,7 +49,7 @@ export async function POST(request, { params }) {
         consentIds: item.klaviConsentId ? [item.klaviConsentId] : [],
         products: DEFAULT_KLAVI_PRODUCTS,
         productsCallbackUrl: process.env.KLAVI_WEBHOOK_URL || null,
-      });
+      }, { ...logMeta, personalTaxId: item.personalTaxId });
       return NextResponse.json({ success: true, message: 'Solicitação de dados PF enviada ao banco.' });
     }
 
@@ -50,7 +60,7 @@ export async function POST(request, { params }) {
       consentIds: item.klaviConsentId ? [item.klaviConsentId] : [],
       products: DEFAULT_KLAVI_PRODUCTS,
       productsCallbackUrl: process.env.KLAVI_WEBHOOK_URL || null,
-    });
+    }, { ...logMeta, businessTaxId: item.businessTaxId });
 
     return NextResponse.json({ success: true, message: 'Solicitação de dados enviada ao banco.' });
   } catch (err) {

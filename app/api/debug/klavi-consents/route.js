@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getConsentList, deleteConsent } from '@/lib/klavi';
+import { getCompanyPool, requireEmpresaFromHeader } from '@/lib/company-db';
 
 export const dynamic = 'force-dynamic';
 
@@ -38,13 +39,21 @@ export async function GET(request) {
     return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
   }
 
+  let pool;
+  try {
+    const empresa = requireEmpresaFromHeader(request);
+    pool = await getCompanyPool(empresa);
+  } catch (err) {
+    return NextResponse.json({ error: err.message }, { status: 400 });
+  }
+
   const { searchParams } = new URL(request.url);
   const personalTaxId = searchParams.get('personalTaxId') || undefined;
   const businessTaxId = searchParams.get('businessTaxId') || undefined;
   const linkId = searchParams.get('linkId') || undefined;
 
   try {
-    const data = await getConsentList({ personalTaxId, businessTaxId, linkId });
+    const data = await getConsentList({ personalTaxId, businessTaxId, linkId }, { pool, source: 'debug' });
     return NextResponse.json(data);
   } catch (error) {
     console.error('[debug klavi-consents] erro ao listar:', error);
@@ -57,22 +66,30 @@ export async function DELETE(request) {
     return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
   }
 
+  let pool;
+  try {
+    const empresa = requireEmpresaFromHeader(request);
+    pool = await getCompanyPool(empresa);
+  } catch (err) {
+    return NextResponse.json({ error: err.message }, { status: 400 });
+  }
+
   try {
     const body = await request.json().catch(() => ({}));
     const { consentId, all, businessTaxId, personalTaxId } = body;
 
     if (consentId) {
-      await deleteConsent(consentId);
+      await deleteConsent(consentId, { pool, source: 'debug' });
       return NextResponse.json({ deleted: consentId });
     }
 
     if (all && (businessTaxId || personalTaxId)) {
-      const list = await getConsentList({ businessTaxId, personalTaxId });
+      const list = await getConsentList({ businessTaxId, personalTaxId }, { pool, source: 'debug' });
       const consents = Array.isArray(list) ? list : (list?.consents || []);
       const results = [];
       for (const c of consents) {
         try {
-          await deleteConsent(c.consentId || c.consentid);
+          await deleteConsent(c.consentId || c.consentid, { pool, source: 'debug' });
           results.push({ id: c.consentId || c.consentid, status: 'deleted' });
         } catch (err) {
           results.push({ id: c.consentId || c.consentid, status: 'error', error: err.message });

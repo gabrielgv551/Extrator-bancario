@@ -19,6 +19,7 @@ import {
   LogOut,
   AlertCircle,
   List,
+  Server,
 } from 'lucide-react';
 
 export default function Dashboard() {
@@ -231,6 +232,14 @@ export default function Dashboard() {
               <List className="w-4 h-4" />
               Ver lista de contas
             </Link>
+            <Link
+              href="/admin/klavi-logs"
+              className="flex items-center gap-2 text-purple-600 border border-purple-200 bg-purple-50 px-3 py-2 rounded-lg text-sm hover:bg-purple-100 transition-colors"
+              title="Logs de requisições Klavi"
+            >
+              <Server className="w-4 h-4" />
+              Logs Klavi
+            </Link>
             <button
               onClick={logout}
               className="flex items-center gap-2 text-gray-500 border border-gray-300 px-3 py-2 rounded-lg text-sm hover:bg-gray-50 transition-colors"
@@ -341,6 +350,14 @@ export default function Dashboard() {
               <Plus className="w-4 h-4" />
               Novo Cliente
             </button>
+            <Link
+              href="/admin/klavi-logs"
+              className="flex items-center gap-2 text-purple-600 border border-purple-200 bg-purple-50 px-3 py-2 rounded-lg text-sm hover:bg-purple-100 transition-colors"
+              title="Logs de requisições Klavi"
+            >
+              <Server className="w-4 h-4" />
+              Logs Klavi
+            </Link>
             <button
               onClick={logout}
               className="flex items-center gap-2 text-gray-500 border border-gray-300 px-3 py-2 rounded-lg text-sm hover:bg-gray-50 transition-colors"

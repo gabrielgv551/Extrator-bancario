@@ -8,7 +8,7 @@ import {
 } from '@/lib/storage-company';
 import { getEmpresaByItem } from '@/lib/central-token-map';
 import { getCompanyPool } from '@/lib/company-db';
-import { mapKlaviReportToLocal, normalizeKlaviStatus, isKlaviConsentAuthorised, isKlaviConsentRejected, requestBusinessInstitutionData, requestPersonalInstitutionData, DEFAULT_KLAVI_PRODUCTS } from '@/lib/klavi';
+import { mapKlaviReportToLocal, normalizeKlaviStatus, isKlaviConsentAuthorised, isKlaviConsentRejected, isPlaceholderInstitutionName, requestBusinessInstitutionData, requestPersonalInstitutionData, DEFAULT_KLAVI_PRODUCTS } from '@/lib/klavi';
 import { enrichTransactionsWithCompanyName } from '@/lib/cnpj-enrichment';
 import { buildItemStatusUpdates } from '@/lib/status';
 
@@ -47,9 +47,19 @@ function extractReportMetadata(payload) {
 
 function extractConsentMetadata(payload) {
   const consent = payload?.consent || payload?.data || payload;
-  const institutionCode = consent?.institutionCode || consent?.institution_code || payload?.institutionCode || payload?.institution_code || null;
-  const institutionName = consent?.institutionName || consent?.institution_name || payload?.institutionName || payload?.institution_name || null;
-  const institutionLogo = consent?.institutionLogo || consent?.institution_logo || payload?.institutionLogo || payload?.institution_logo || null;
+  const institution = consent?.institution || payload?.institution || null;
+  const institutionCode =
+    institution?.code || institution?.institutionCode ||
+    consent?.institutionCode || consent?.institution_code ||
+    payload?.institutionCode || payload?.institution_code || null;
+  const institutionName =
+    institution?.name || institution?.institutionName ||
+    consent?.institutionName || consent?.institution_name ||
+    payload?.institutionName || payload?.institution_name || null;
+  const institutionLogo =
+    institution?.logo || institution?.institutionLogo ||
+    consent?.institutionLogo || consent?.institution_logo ||
+    payload?.institutionLogo || payload?.institution_logo || null;
   return { institutionCode, institutionName, institutionLogo };
 }
 
@@ -96,7 +106,33 @@ async function persistReport(pool, localItem, payload) {
     console.error('[klavi webhook] erro no log de debug:', e.message);
   }
 
-  const institutionName = localItem?.institutionName || report?.checkingAccounts?.[0]?.brandName || report?.creditCardAccounts?.[0]?.brandName || 'Banco';
+  // Extrai o nome real do banco a partir de todas as fontes de conta do relatório.
+  const reportInstitutionName =
+    report?.checkingAccounts?.[0]?.brandName ||
+    report?.checkingAccounts?.[0]?.name ||
+    report?.savingsAccounts?.[0]?.brandName ||
+    report?.savingsAccounts?.[0]?.name ||
+    report?.paymentAccounts?.[0]?.brandName ||
+    report?.paymentAccounts?.[0]?.name ||
+    report?.accounts?.[0]?.brandName ||
+    report?.accounts?.[0]?.name ||
+    report?.creditCardAccounts?.[0]?.brandName ||
+    report?.creditCardAccounts?.[0]?.name ||
+    report?.creditCards?.[0]?.brandName ||
+    report?.creditCards?.[0]?.name ||
+    null;
+
+  // Se o item ainda tem nome placeholder, substitui pelo nome real do relatório.
+  const institutionName = !isPlaceholderInstitutionName(localItem?.institutionName)
+    ? localItem.institutionName
+    : (reportInstitutionName || localItem?.institutionName || 'Banco');
+
+  if (reportInstitutionName && isPlaceholderInstitutionName(localItem?.institutionName)) {
+    await updateItemStatus(pool, localItem.id, { institutionName: reportInstitutionName }).catch((err) => {
+      console.error('[klavi webhook] erro ao atualizar institutionName item=%s:', localItem.id, err.message);
+    });
+  }
+
   const client = await getClientById(pool, localItem.clientId).catch(() => null);
   const clientName = client?.name || localItem?.clientName || null;
   const mapped = mapKlaviReportToLocal({ productName, report, institutionCode, institutionName });
@@ -184,6 +220,18 @@ async function requestReportAfterConsent(pool, localItem) {
     const businessTaxId = localItem.businessTaxId || client?.businessTaxId;
     const personalTaxId = localItem.personalTaxId || client?.personalTaxId;
 
+    const logMeta = {
+      pool,
+      source: 'webhook',
+      clientId: localItem.clientId,
+      itemId: localItem.id,
+      linkId: localItem.klaviLinkId,
+      consentId: localItem.klaviConsentId,
+      businessTaxId: localItem.taxType !== 'pf' ? businessTaxId : undefined,
+      personalTaxId: localItem.taxType === 'pf' ? personalTaxId : undefined,
+      institutionCode: localItem.institutionCode,
+    };
+
     if (localItem.taxType === 'pf' && personalTaxId) {
       console.log('[klavi webhook] solicitando relatório PF após consent item=%s institution=%s', localItem.id, localItem.institutionCode);
       await requestPersonalInstitutionData({
@@ -193,7 +241,7 @@ async function requestReportAfterConsent(pool, localItem) {
         consentIds: localItem.klaviConsentId ? [localItem.klaviConsentId] : [],
         products: DEFAULT_KLAVI_PRODUCTS,
         productsCallbackUrl: process.env.KLAVI_WEBHOOK_URL || null,
-      });
+      }, logMeta);
     } else if (businessTaxId) {
       console.log('[klavi webhook] solicitando relatório PJ após consent item=%s institution=%s', localItem.id, localItem.institutionCode);
       await requestBusinessInstitutionData({
@@ -203,7 +251,7 @@ async function requestReportAfterConsent(pool, localItem) {
         consentIds: localItem.klaviConsentId ? [localItem.klaviConsentId] : [],
         products: DEFAULT_KLAVI_PRODUCTS,
         productsCallbackUrl: process.env.KLAVI_WEBHOOK_URL || null,
-      });
+      }, logMeta);
     } else {
       console.log('[klavi webhook] CPF/CNPJ não disponível para solicitar relatório item=%s', localItem.id);
       return;
@@ -279,12 +327,21 @@ export async function POST(request) {
     if (eventLower.includes('consent')) {
       if (localItem) {
         // Atualiza instituição se vier no payload de consentimento (fluxo widget-first).
+        // Se o item ainda tem um nome placeholder, substitui pelo nome real do banco.
         const { institutionCode, institutionName, institutionLogo } = extractConsentMetadata(payload);
-        if (institutionCode || institutionName) {
+        if (institutionCode || institutionName || institutionLogo) {
           const updates = {};
-          if (institutionCode && !localItem.institutionCode) updates.institutionCode = institutionCode;
-          if (institutionName && !localItem.institutionName) updates.institutionName = institutionName;
-          if (institutionLogo && !localItem.institutionLogo) updates.institutionLogo = institutionLogo;
+          const shouldUpdateInstitution = isPlaceholderInstitutionName(localItem.institutionName) ||
+            isPlaceholderInstitutionName(localItem.institutionCode);
+          if (institutionCode && (!localItem.institutionCode || shouldUpdateInstitution)) {
+            updates.institutionCode = institutionCode;
+          }
+          if (institutionName && (!localItem.institutionName || isPlaceholderInstitutionName(localItem.institutionName))) {
+            updates.institutionName = institutionName;
+          }
+          if (institutionLogo && (!localItem.institutionLogo || isPlaceholderInstitutionName(localItem.institutionName))) {
+            updates.institutionLogo = institutionLogo;
+          }
           if (Object.keys(updates).length > 0) {
             await updateItemStatus(pool, localItem.id, updates);
             console.log('[klavi webhook] item=%s atualizado com instituição: %j', localItem.id, updates);
