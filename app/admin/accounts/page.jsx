@@ -35,7 +35,10 @@ export default function AccountsListPage() {
       (a.empresaNome || '').toLowerCase().includes(term) ||
       (a.clientName || '').toLowerCase().includes(term) ||
       (a.bank || '').toLowerCase().includes(term) ||
-      (a.status || '').toLowerCase().includes(term)
+      (a.status || '').toLowerCase().includes(term) ||
+      (a.rawStatus || '').toLowerCase().includes(term) ||
+      (a.executionStatus || '').toLowerCase().includes(term) ||
+      (a.errorCode || '').toLowerCase().includes(term)
     );
   });
 
@@ -127,20 +130,21 @@ export default function AccountsListPage() {
                 <th className="px-5 py-3 font-semibold text-gray-600">Empresa</th>
                 <th className="px-5 py-3 font-semibold text-gray-600">Cliente</th>
                 <th className="px-5 py-3 font-semibold text-gray-600">Banco</th>
-                <th className="px-5 py-3 font-semibold text-gray-600">Status</th>
+                <th className="px-5 py-3 font-semibold text-gray-600">Status da Conexão</th>
+                <th className="px-5 py-3 font-semibold text-gray-600">Situação</th>
                 <th className="px-5 py-3 font-semibold text-gray-600">Última Sync</th>
               </tr>
             </thead>
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={5} className="text-center py-12 text-gray-400">
+                  <td colSpan={6} className="text-center py-12 text-gray-400">
                     Carregando contas...
                   </td>
                 </tr>
               ) : filteredAccounts.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="text-center py-12 text-gray-400">
+                  <td colSpan={6} className="text-center py-12 text-gray-400">
                     {search ? 'Nenhuma conta encontrada' : 'Nenhuma conta cadastrada.'}
                   </td>
                 </tr>
@@ -150,6 +154,15 @@ export default function AccountsListPage() {
                     <td className="px-5 py-3 text-gray-900 font-medium">{account.empresaNome}</td>
                     <td className="px-5 py-3 text-gray-700">{account.clientName}</td>
                     <td className="px-5 py-3 text-gray-700">{account.bank}</td>
+                    <td className="px-5 py-3 text-gray-700 text-xs">
+                      <div className="font-medium">{account.rawStatus}</div>
+                      {account.executionStatus && account.executionStatus !== account.rawStatus && (
+                        <div className="text-gray-500">{account.executionStatus}</div>
+                      )}
+                      {account.errorCode && (
+                        <div className="text-red-600 mt-0.5">{account.errorCode}</div>
+                      )}
+                    </td>
                     <td className="px-5 py-3">
                       <span
                         className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${

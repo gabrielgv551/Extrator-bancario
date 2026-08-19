@@ -40,6 +40,9 @@ export async function GET() {
             bank: item.institutionName || '—',
             status: status.label,
             statusType: status.type,
+            rawStatus: item.status || '—',
+            executionStatus: item.executionStatus || '—',
+            errorCode: item.errorCode || null,
             lastSync: client.lastSync,
             itemId: item.id,
           });
