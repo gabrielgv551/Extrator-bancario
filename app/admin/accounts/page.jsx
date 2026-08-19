@@ -46,6 +46,7 @@ export default function AccountsListPage() {
     const matchesSearch =
       (a.empresaNome || '').toLowerCase().includes(term) ||
       (a.clientName || '').toLowerCase().includes(term) ||
+      (a.businessTaxId || '').toLowerCase().includes(term) ||
       (a.bank || '').toLowerCase().includes(term) ||
       (a.status || '').toLowerCase().includes(term) ||
       (a.rawStatus || '').toLowerCase().includes(term) ||
@@ -95,6 +96,7 @@ export default function AccountsListPage() {
     const headers = [
       'Empresa',
       'Cliente',
+      'CNPJ',
       'Banco',
       'Status da Conexão',
       'Execution Status',
@@ -105,6 +107,7 @@ export default function AccountsListPage() {
     const rows = filteredAccounts.map((a) => [
       a.empresaNome,
       a.clientName,
+      a.businessTaxId || '',
       a.bank,
       a.rawStatus,
       a.executionStatus,
@@ -209,6 +212,7 @@ export default function AccountsListPage() {
               <tr className="border-b border-gray-200 text-left">
                 <th className="px-5 py-3 font-semibold text-gray-600">Empresa</th>
                 <th className="px-5 py-3 font-semibold text-gray-600">Cliente</th>
+                <th className="px-5 py-3 font-semibold text-gray-600">CNPJ</th>
                 <th className="px-5 py-3 font-semibold text-gray-600">Banco</th>
                 <th className="px-5 py-3 font-semibold text-gray-600">Status da Conexão</th>
                 <th className="px-5 py-3 font-semibold text-gray-600">Situação</th>
@@ -239,6 +243,7 @@ export default function AccountsListPage() {
                     ))}
                   </select>
                 </th>
+                <th className="px-5 py-2 font-normal"></th>
                 <th className="px-5 py-2 font-normal">
                   <select
                     value={filters.banco}
@@ -281,13 +286,13 @@ export default function AccountsListPage() {
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={6} className="text-center py-12 text-gray-400">
+                  <td colSpan={7} className="text-center py-12 text-gray-400">
                     Carregando contas...
                   </td>
                 </tr>
               ) : filteredAccounts.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="text-center py-12 text-gray-400">
+                  <td colSpan={7} className="text-center py-12 text-gray-400">
                     {search ? 'Nenhuma conta encontrada' : 'Nenhuma conta cadastrada.'}
                   </td>
                 </tr>
@@ -296,6 +301,7 @@ export default function AccountsListPage() {
                   <tr key={idx} className="border-b border-gray-100 hover:bg-gray-50 transition-colors">
                     <td className="px-5 py-3 text-gray-900 font-medium">{account.empresaNome}</td>
                     <td className="px-5 py-3 text-gray-700">{account.clientName}</td>
+                    <td className="px-5 py-3 text-gray-700 text-xs">{account.businessTaxId || '—'}</td>
                     <td className="px-5 py-3 text-gray-700">{account.bank}</td>
                     <td className="px-5 py-3 text-gray-700 text-xs">
                       <div className="font-medium">{account.rawStatus}</div>

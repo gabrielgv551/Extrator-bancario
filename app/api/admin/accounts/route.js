@@ -16,20 +16,6 @@ export async function GET() {
 
       for (const client of clients) {
         const items = await getItemsByClientId(pool, client.id);
-        if (items.length === 0) {
-          accounts.push({
-            empresa,
-            empresaNome,
-            clientId: client.id,
-            clientName: client.name,
-            bank: '—',
-            status: 'Sem banco',
-            statusType: 'empty',
-            lastSync: client.lastSync,
-          });
-          continue;
-        }
-
         for (const item of items) {
           const status = normalizeStatus(item);
           accounts.push({
@@ -37,6 +23,7 @@ export async function GET() {
             empresaNome,
             clientId: client.id,
             clientName: client.name,
+            businessTaxId: client.businessTaxId || null,
             bank: item.institutionName || '—',
             status: status.label,
             statusType: status.type,
