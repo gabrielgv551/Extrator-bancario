@@ -270,6 +270,17 @@ export default function ClientPage({ params }) {
   const formatDate = (iso) =>
     new Date(iso).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
 
+  const formatTime = (iso) =>
+    new Date(iso).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', hour12: false });
+
+  const formatDateTime = (iso) =>
+    new Date(iso).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false });
+
+  const hasTime = (iso) => {
+    const d = new Date(iso);
+    return d.getUTCHours() !== 0 || d.getUTCMinutes() !== 0 || d.getUTCSeconds() !== 0;
+  };
+
   const formatCurrency = (amount) =>
     new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(amount);
 
@@ -291,6 +302,41 @@ export default function ClientPage({ params }) {
     }
     return { label: 'Pendente', color: 'bg-gray-400', text: 'text-gray-600', bg: 'bg-gray-50', requiresAction: false };
   };
+
+  const isCartaoNumber = (value) => /^\d{4}$/.test(String(value || '').trim());
+
+  const groupItems = (items) => {
+    const groups = new Map();
+
+    for (const item of items) {
+      const consentId = item.klaviConsentId || item.pluggyItemId || item.id;
+      const key = `${item.institutionName || ''}|${consentId}`;
+
+      if (!groups.has(key)) {
+        groups.set(key, []);
+      }
+      groups.get(key).push(item);
+    }
+
+    return Array.from(groups.values()).map((groupItems) => {
+      const main = groupItems[0];
+      const contaItem = groupItems.find((i) => i.accountNumbers && !isCartaoNumber(i.accountNumbers)) || null;
+      const cartaoItem = groupItems.find((i) => i.accountNumbers && isCartaoNumber(i.accountNumbers)) || null;
+      const primary = contaItem || cartaoItem || main;
+      const allIds = groupItems.map((i) => i.id);
+
+      return {
+        ...primary,
+        contaNumber: contaItem ? contaItem.accountNumbers : null,
+        cartaoNumber: cartaoItem ? cartaoItem.accountNumbers : null,
+        contaItemId: contaItem ? contaItem.id : null,
+        cartaoItemId: cartaoItem ? cartaoItem.id : null,
+        itemIds: allIds,
+      };
+    });
+  };
+
+  const groupedItems = groupItems(items);
 
   const summary = transactions.reduce(
     (acc, tx) => {
@@ -460,28 +506,31 @@ export default function ClientPage({ params }) {
         {/* Connected banks list */}
         <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
           <div className="px-5 py-3 border-b border-gray-200 flex items-center justify-between">
-            <p className="text-sm font-semibold text-gray-700">Bancos conectados ({items.length})</p>
+            <p className="text-sm font-semibold text-gray-700">Bancos conectados ({groupedItems.length})</p>
           </div>
-          {items.length === 0 ? (
+          {groupedItems.length === 0 ? (
             <div className="p-8 text-center">
               <WifiOff className="w-10 h-10 text-gray-300 mx-auto mb-3" />
               <p className="text-gray-500 text-sm">Nenhum banco conectado. Clique em &quot;Conectar Banco&quot; ou compartilhe o link do portal.</p>
             </div>
           ) : (
             <div className="divide-y divide-gray-100">
-              {items.map((item) => {
-                const s = getItemStatus(item);
+              {groupedItems.map((group) => {
+                const s = getItemStatus(group);
                 return (
-                  <div key={item.id} className="flex items-center gap-3 px-5 py-3">
-                    {item.institutionLogo ? (
-                      <img src={item.institutionLogo} alt={item.institutionName} className="w-8 h-8 rounded-lg object-contain border border-gray-100 p-0.5" />
+                  <div key={group.itemIds.join('-')} className="flex items-center gap-3 px-5 py-3">
+                    {group.institutionLogo ? (
+                      <img src={group.institutionLogo} alt={group.institutionName} className="w-8 h-8 rounded-lg object-contain border border-gray-100 p-0.5" />
                     ) : (
                       <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center"><Building2 className="w-4 h-4 text-blue-600" /></div>
                     )}
                     <span className="flex-1 text-sm font-medium text-gray-900">
-                      {item.institutionName}
-                      {item.accountNumbers && (
-                        <span className="ml-2 text-xs font-normal text-gray-400">Conta: {item.accountNumbers}</span>
+                      {group.institutionName}
+                      {group.contaNumber && (
+                        <span className="ml-2 text-xs font-normal text-gray-400">Conta: {group.contaNumber}</span>
+                      )}
+                      {group.cartaoNumber && (
+                        <span className="ml-2 text-xs font-normal text-gray-400">Cartão: {group.cartaoNumber}</span>
                       )}
                     </span>
                     <span className={`flex items-center gap-1.5 px-2 py-1 rounded-full text-xs font-medium ${s.bg} ${s.text}`}>
@@ -489,24 +538,24 @@ export default function ClientPage({ params }) {
                       {s.label}
                     </span>
                     <button
-                      onClick={() => refreshConnections(item.id)}
+                      onClick={() => refreshConnections(group.contaItemId || group.id)}
                       disabled={refreshing}
                       className="text-indigo-400 hover:text-indigo-600 hover:bg-indigo-50 p-1.5 rounded-lg transition-colors"
                       title="Atualizar esta conexão"
                     >
                       <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
                     </button>
-                    {item.klaviLinkId && (
+                    {group.klaviLinkId && (
                       <button
-                        onClick={() => testProducts(item.id)}
-                        disabled={testingProducts === item.id}
+                        onClick={() => testProducts(group.contaItemId || group.id)}
+                        disabled={testingProducts === (group.contaItemId || group.id)}
                         className="text-purple-400 hover:text-purple-600 hover:bg-purple-50 p-1.5 rounded-lg transition-colors"
                         title="Testar produtos Klavi"
                       >
-                        <FlaskConical className={`w-4 h-4 ${testingProducts === item.id ? 'animate-pulse' : ''}`} />
+                        <FlaskConical className={`w-4 h-4 ${testingProducts === (group.contaItemId || group.id) ? 'animate-pulse' : ''}`} />
                       </button>
                     )}
-                    <button onClick={() => removeBank(item.id, item.institutionName)} disabled={removingId === item.id} className="text-red-400 hover:text-red-600 p-1.5 rounded-lg hover:bg-red-50 transition-colors">
+                    <button onClick={() => removeBank(group.contaItemId || group.id, group.institutionName)} disabled={removingId === (group.contaItemId || group.id)} className="text-red-400 hover:text-red-600 p-1.5 rounded-lg hover:bg-red-50 transition-colors">
                       <Trash2 className="w-4 h-4" />
                     </button>
                   </div>
@@ -688,6 +737,7 @@ export default function ClientPage({ params }) {
                     <thead>
                       <tr className="border-b border-gray-200 bg-gray-50 text-left">
                         <th className="px-4 py-3 font-semibold text-gray-600 whitespace-nowrap">Data</th>
+                        <th className="px-4 py-3 font-semibold text-gray-600 whitespace-nowrap">Hora</th>
                         <th className="px-4 py-3 font-semibold text-gray-600 whitespace-nowrap">Data Transação</th>
                         <th className="px-4 py-3 font-semibold text-gray-600">Descrição</th>
                         <th className="px-4 py-3 font-semibold text-gray-600">Tipo</th>
@@ -710,8 +760,11 @@ export default function ClientPage({ params }) {
                             key={tx.id || idx}
                             className="border-b border-gray-100 hover:bg-gray-50 transition-colors"
                           >
-                          <td className="px-4 py-2.5 text-gray-500 whitespace-nowrap text-xs">
+                          <td className="px-4 py-2.5 text-gray-500 whitespace-nowrap text-xs" title={formatDateTime(tx.date)}>
                             {formatDate(tx.date)}
+                          </td>
+                          <td className="px-4 py-2.5 text-gray-500 whitespace-nowrap text-xs" title={hasTime(tx.date) ? formatDateTime(tx.date) : 'Data sem horário informado pela instituição'}>
+                            {hasTime(tx.date) ? formatTime(tx.date) : '—'}
                           </td>
                           <td className="px-4 py-2.5 text-gray-500 whitespace-nowrap text-xs">
                             {tx.dateTransacted ? formatDate(tx.dateTransacted) : '—'}

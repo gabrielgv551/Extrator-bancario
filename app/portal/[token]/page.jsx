@@ -64,6 +64,41 @@ export default function PortalPage({ params }) {
     return { label: 'Pendente', color: 'bg-gray-400', text: 'text-gray-600', bg: 'bg-gray-50', requiresAction: false };
   };
 
+  const isCartaoNumber = (value) => /^\d{4}$/.test(String(value || '').trim());
+
+  const groupItems = (items) => {
+    const groups = new Map();
+
+    for (const item of items) {
+      const consentId = item.klaviConsentId || item.pluggyItemId || item.id;
+      const key = `${item.institutionName || ''}|${consentId}`;
+
+      if (!groups.has(key)) {
+        groups.set(key, []);
+      }
+      groups.get(key).push(item);
+    }
+
+    return Array.from(groups.values()).map((groupItems) => {
+      const main = groupItems[0];
+      const contaItem = groupItems.find((i) => i.accountNumbers && !isCartaoNumber(i.accountNumbers)) || null;
+      const cartaoItem = groupItems.find((i) => i.accountNumbers && isCartaoNumber(i.accountNumbers)) || null;
+      const primary = contaItem || cartaoItem || main;
+      const allIds = groupItems.map((i) => i.id);
+
+      return {
+        ...primary,
+        contaNumber: contaItem ? contaItem.accountNumbers : null,
+        cartaoNumber: cartaoItem ? cartaoItem.accountNumbers : null,
+        contaItemId: contaItem ? contaItem.id : null,
+        cartaoItemId: cartaoItem ? cartaoItem.id : null,
+        itemIds: allIds,
+      };
+    });
+  };
+
+  const groupedItems = groupItems(items);
+
   const connectBank = () => {
     setSelectedTaxType(null);
     setShowTaxTypeSelector(true);
@@ -237,10 +272,10 @@ export default function PortalPage({ params }) {
 
         <div>
           <h2 className="text-sm font-semibold text-gray-600 uppercase tracking-wider mb-3">
-            Bancos conectados ({items.length})
+            Bancos conectados ({groupedItems.length})
           </h2>
 
-          {items.length === 0 ? (
+          {groupedItems.length === 0 ? (
             <div className="bg-white rounded-2xl border border-gray-200 p-8 text-center shadow-sm">
               <Wifi className="w-10 h-10 text-gray-300 mx-auto mb-3" />
               <p className="text-gray-500 font-medium">Nenhum banco conectado ainda</p>
@@ -248,17 +283,17 @@ export default function PortalPage({ params }) {
             </div>
           ) : (
             <div className="space-y-3">
-              {items.map((item) => {
-                const s = getItemStatus(item);
+              {groupedItems.map((group) => {
+                const s = getItemStatus(group);
                 return (
                 <div
-                  key={item.id}
+                  key={group.itemIds.join('-')}
                   className={`bg-white rounded-2xl border p-4 flex items-center gap-4 shadow-sm ${s.requiresAction ? 'border-red-200 bg-red-50/30' : 'border-gray-200'}`}
                 >
-                  {item.institutionLogo ? (
+                  {group.institutionLogo ? (
                     <img
-                      src={item.institutionLogo}
-                      alt={item.institutionName}
+                      src={group.institutionLogo}
+                      alt={group.institutionName}
                       className="w-11 h-11 rounded-xl object-contain border border-gray-100 p-1"
                     />
                   ) : (
@@ -267,25 +302,28 @@ export default function PortalPage({ params }) {
                     </div>
                   )}
                   <div className="flex-1 min-w-0">
-                    <p className="font-semibold text-gray-900 text-sm truncate">{item.institutionName}</p>
-                    <div className="flex items-center gap-1.5 mt-0.5">
+                    <p className="font-semibold text-gray-900 text-sm truncate">{group.institutionName}</p>
+                    <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
                       <span className={`w-1.5 h-1.5 rounded-full ${s.color} inline-block`}></span>
                       <span className={`text-xs font-medium ${s.text}`}>{s.label}</span>
-                      {item.accountNumbers && (
-                        <span className="text-xs text-gray-400">· Conta: {item.accountNumbers}</span>
+                      {group.contaNumber && (
+                        <span className="text-xs text-gray-400">· Conta: {group.contaNumber}</span>
+                      )}
+                      {group.cartaoNumber && (
+                        <span className="text-xs text-gray-400">· Cartão: {group.cartaoNumber}</span>
                       )}
                     </div>
-                    {item.errorMessage && s.requiresAction && (
-                      <p className="text-xs text-red-600 mt-1 truncate" title={item.errorMessage}>{item.errorMessage}</p>
+                    {group.errorMessage && s.requiresAction && (
+                      <p className="text-xs text-red-600 mt-1 truncate" title={group.errorMessage}>{group.errorMessage}</p>
                     )}
                   </div>
                   <div className="flex items-center gap-1">
-                    {removingId === item.id ? (
+                    {removingId === (group.contaItemId || group.id) ? (
                       <Loader2 className="w-4 h-4 animate-spin text-gray-400" />
                     ) : null}
-                    {(item.status === 'WAITING_DATA' || item.status === 'UPDATING') && (
+                    {(group.status === 'WAITING_DATA' || group.status === 'UPDATING') && (
                       <button
-                        onClick={() => handleRequestData(item)}
+                        onClick={() => handleRequestData({ ...group, id: group.contaItemId || group.id })}
                         className="text-gray-400 hover:text-blue-600 hover:bg-blue-50 p-2 rounded-lg transition-colors"
                         title="Solicitar dados do banco novamente"
                       >
@@ -293,7 +331,7 @@ export default function PortalPage({ params }) {
                       </button>
                     )}
                     <button
-                      onClick={() => handleReconnect(item)}
+                      onClick={() => handleReconnect({ ...group, id: group.contaItemId || group.id })}
                       disabled={connecting}
                       className="text-blue-400 hover:text-blue-600 hover:bg-blue-50 p-2 rounded-lg transition-colors disabled:opacity-50"
                       title="Reconectar pelo Open Finance"
@@ -301,12 +339,12 @@ export default function PortalPage({ params }) {
                       <Wifi className="w-4 h-4" />
                     </button>
                     <button
-                      onClick={() => removeBank(item.id, item.institutionName)}
-                      disabled={removingId === item.id}
+                      onClick={() => removeBank(group.contaItemId || group.id, group.institutionName)}
+                      disabled={removingId === (group.contaItemId || group.id)}
                       className="text-red-400 hover:text-red-600 hover:bg-red-50 p-2 rounded-lg transition-colors disabled:opacity-50"
                       title="Desconectar"
                     >
-                      {removingId === item.id ? (
+                      {removingId === (group.contaItemId || group.id) ? (
                         <Loader2 className="w-4 h-4 animate-spin" />
                       ) : (
                         <Trash2 className="w-4 h-4" />
