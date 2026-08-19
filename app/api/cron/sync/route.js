@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
-import { forEachCompany } from '@/lib/company-db';
-import { runMultiTenantSync } from '@/lib/cron-sync';
+import { forEachCompany, getCompanyPool } from '@/lib/company-db';
+import { runMultiTenantSync, syncCompany } from '@/lib/cron-sync';
 
 export const dynamic = 'force-dynamic';
 // A cron processa dezenas de empresas; 60s costuma estourar antes de chegar
@@ -18,8 +18,15 @@ export async function GET(request) {
 
   const { searchParams } = new URL(request.url);
   const filterClientId = searchParams.get('clientId') || null;
+  const filterEmpresa = searchParams.get('empresa') || null;
 
-  const companyResults = await runMultiTenantSync({ filterClientId, forEachCompany });
+  let companyResults;
+  if (filterEmpresa) {
+    const pool = await getCompanyPool(filterEmpresa);
+    companyResults = [await syncCompany({ empresa: filterEmpresa, pool, filterClientId })];
+  } else {
+    companyResults = await runMultiTenantSync({ filterClientId, forEachCompany });
+  }
 
   return NextResponse.json({ synced_at: new Date().toISOString(), companies: companyResults });
 }

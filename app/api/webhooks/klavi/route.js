@@ -72,10 +72,22 @@ async function persistReport(pool, localItem, payload) {
     return;
   }
 
-  // Debug: mostra estrutura bruta das transações para descobrir nomes de campos de categoria.
+  // Debug: mostra estrutura bruta das transações e contas recebidas.
   try {
-    const firstChecking = report?.checkingAccounts?.[0]?.transactionDetails?.[0];
-    const firstCredit = report?.creditCardAccounts?.[0]?.transactionDetails?.[0];
+    const checking = report?.checkingAccounts || [];
+    const savings = report?.savingsAccounts || [];
+    const creditCards = report?.creditCardAccounts || [];
+    const altCreditCards = report?.creditCards || [];
+    const checkingNumbers = checking.map(a => [a.branchCode, a.number, a.checkDigit].filter(Boolean).join('-')).filter(Boolean);
+    const savingsNumbers = savings.map(a => [a.branchCode, a.number, a.checkDigit].filter(Boolean).join('-')).filter(Boolean);
+    const creditNumbers = creditCards.map(a => [a.branchCode, a.number, a.checkDigit].filter(Boolean).join('-')).filter(Boolean);
+    const altCreditNumbers = altCreditCards.map(a => a.identificationNumber || a.paymentMethods?.[0]?.identificationNumber || a.number).filter(Boolean);
+
+    console.log('[klavi webhook] contas recebidas item=%s checking=%d(%j) savings=%d(%j) creditCard=%d(%j) creditCardsAlt=%d(%j)',
+      localItem.id, checking.length, checkingNumbers, savings.length, savingsNumbers, creditCards.length, creditNumbers, altCreditCards.length, altCreditNumbers);
+
+    const firstChecking = checking?.[0]?.transactionDetails?.[0];
+    const firstCredit = creditCards?.[0]?.transactionDetails?.[0];
     console.log('[klavi webhook] sample checking tx keys:', firstChecking ? Object.keys(firstChecking) : 'n/a');
     console.log('[klavi webhook] sample credit tx keys:', firstCredit ? Object.keys(firstCredit) : 'n/a');
     if (firstChecking) console.log('[klavi webhook] sample checking tx:', JSON.stringify(firstChecking, null, 2).slice(0, 800));
@@ -114,12 +126,12 @@ async function persistReport(pool, localItem, payload) {
     return { removedPending: 0, removedInstallments: 0 };
   });
 
-  console.log('[klavi webhook] relatório persistido item=%s product=%s bank=%d credit=%d inv=%d debts=%d dedup=%j',
-    localItem.id, productName, savedBank, savedCredit, savedInv, savedDebts, dedup);
+  const persistedAccountNumbers = mapped.accounts.map(a => a.number).filter(Boolean);
+  const uniqueAccountNumbers = [...new Set(persistedAccountNumbers)].join(', ');
+  console.log('[klavi webhook] relatório persistido item=%s product=%s bank=%d credit=%d inv=%d debts=%d dedup=%j accounts=%j',
+    localItem.id, productName, savedBank, savedCredit, savedInv, savedDebts, dedup, uniqueAccountNumbers || null);
 
   // Atualiza números de conta para exibição no portal.
-  const accountNumbers = mapped.accounts.map(a => a.number).filter(Boolean);
-  const uniqueAccountNumbers = [...new Set(accountNumbers)].join(', ');
   if (uniqueAccountNumbers) {
     await updateItemStatus(pool, localItem.id, { accountNumbers: uniqueAccountNumbers || null }).catch(() => {});
   }

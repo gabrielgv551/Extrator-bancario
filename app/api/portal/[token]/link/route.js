@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getClientByToken, addKlaviItem } from '@/lib/storage-company';
+import { getClientByToken, addKlaviItem, getItemsByClientId } from '@/lib/storage-company';
 import { getEmpresaByToken, registerItemLocation } from '@/lib/central-token-map';
 import { getCompanyPool } from '@/lib/company-db';
 import { createLink, getConsentList, getInstitutions, requestBusinessInstitutionData, requestPersonalInstitutionData, DEFAULT_KLAVI_PRODUCTS } from '@/lib/klavi';
@@ -68,11 +68,25 @@ export async function POST(request, { params }) {
       if (!isPF && businessTaxId) listParams.businessTaxId = businessTaxId;
       const listData = await getConsentList(listParams);
       const existingConsents = Array.isArray(listData) ? listData : (listData?.consents || []);
+
+      // Ignora consentimentos que já estão conectados localmente; senão o portal
+      // fica reutilizando os mesmos bancos e nunca abre o widget para adicionar um novo.
+      const localItems = await getItemsByClientId(pool, client.id);
+      const localConsentIds = new Set(
+        localItems.map(i => String(i.klaviConsentId || '').toLowerCase()).filter(Boolean)
+      );
+      const localLinkIds = new Set(
+        localItems.map(i => String(i.klaviLinkId || '').toLowerCase()).filter(Boolean)
+      );
+
       const authorised = existingConsents.filter(
         c => ['authorised', 'authorized'].includes(String(c.status).toLowerCase()) &&
           // Garante que o consentimento pertence ao CNPJ atual (PJ) ou ao CPF atual (PF).
           // A Klavi pode retornar consentimentos de outros CNPJs vinculados ao mesmo CPF.
-          (!businessTaxId || String(c.businessTaxId || c.businesstaxid || '') === String(businessTaxId))
+          (!businessTaxId || String(c.businessTaxId || c.businesstaxid || '') === String(businessTaxId)) &&
+          // Evita reaproveitar consentimentos que já existem no dashboard.
+          !localConsentIds.has(String(c.consentId || c.consentid || '').toLowerCase()) &&
+          !localLinkIds.has(String(c.linkId || c.linkid || '').toLowerCase())
       );
 
       if (authorised.length > 0) {
