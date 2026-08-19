@@ -11,6 +11,13 @@ export default function AccountsListPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [search, setSearch] = useState('');
+  const [filters, setFilters] = useState({
+    empresa: '',
+    cliente: '',
+    banco: '',
+    statusConexao: '',
+    situacao: '',
+  });
 
   useEffect(() => {
     async function fetchAccounts() {
@@ -29,17 +36,31 @@ export default function AccountsListPage() {
     fetchAccounts();
   }, []);
 
+  const uniqueValues = (key) => {
+    const values = new Set(accounts.map((a) => a[key] || '').filter(Boolean));
+    return Array.from(values).sort((a, b) => a.localeCompare(b));
+  };
+
   const filteredAccounts = accounts.filter((a) => {
     const term = search.toLowerCase();
-    return (
+    const matchesSearch =
       (a.empresaNome || '').toLowerCase().includes(term) ||
       (a.clientName || '').toLowerCase().includes(term) ||
       (a.bank || '').toLowerCase().includes(term) ||
       (a.status || '').toLowerCase().includes(term) ||
       (a.rawStatus || '').toLowerCase().includes(term) ||
       (a.executionStatus || '').toLowerCase().includes(term) ||
-      (a.errorCode || '').toLowerCase().includes(term)
-    );
+      (a.errorCode || '').toLowerCase().includes(term);
+
+    if (!matchesSearch) return false;
+
+    if (filters.empresa && (a.empresaNome || '') !== filters.empresa) return false;
+    if (filters.cliente && (a.clientName || '') !== filters.cliente) return false;
+    if (filters.banco && (a.bank || '') !== filters.banco) return false;
+    if (filters.statusConexao && (a.rawStatus || '') !== filters.statusConexao) return false;
+    if (filters.situacao && (a.status || '') !== filters.situacao) return false;
+
+    return true;
   });
 
   const statusStyles = {
@@ -157,15 +178,23 @@ export default function AccountsListPage() {
           </p>
         </div>
 
-        <div className="relative mb-6">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-          <input
-            type="text"
-            placeholder="Buscar empresa, cliente, banco ou status..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="w-full pl-9 pr-4 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
+        <div className="flex items-center gap-3 mb-6">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+            <input
+              type="text"
+              placeholder="Buscar empresa, cliente, banco ou status..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="w-full pl-9 pr-4 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+          <button
+            onClick={() => { setSearch(''); setFilters({ empresa: '', cliente: '', banco: '', statusConexao: '', situacao: '' }); }}
+            className="text-gray-600 border border-gray-300 px-3 py-2 rounded-lg text-sm hover:bg-gray-50 transition-colors whitespace-nowrap"
+          >
+            Limpar filtros
+          </button>
         </div>
 
         {error && (
@@ -184,6 +213,69 @@ export default function AccountsListPage() {
                 <th className="px-5 py-3 font-semibold text-gray-600">Status da Conexão</th>
                 <th className="px-5 py-3 font-semibold text-gray-600">Situação</th>
                 <th className="px-5 py-3 font-semibold text-gray-600">Última Sync</th>
+              </tr>
+              <tr className="border-b border-gray-200 bg-white">
+                <th className="px-5 py-2 font-normal">
+                  <select
+                    value={filters.empresa}
+                    onChange={(e) => setFilters((f) => ({ ...f, empresa: e.target.value }))}
+                    className="w-full border border-gray-300 rounded-md px-2 py-1.5 text-xs text-gray-700 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  >
+                    <option value="">Todas</option>
+                    {uniqueValues('empresaNome').map((v) => (
+                      <option key={v} value={v}>{v}</option>
+                    ))}
+                  </select>
+                </th>
+                <th className="px-5 py-2 font-normal">
+                  <select
+                    value={filters.cliente}
+                    onChange={(e) => setFilters((f) => ({ ...f, cliente: e.target.value }))}
+                    className="w-full border border-gray-300 rounded-md px-2 py-1.5 text-xs text-gray-700 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  >
+                    <option value="">Todos</option>
+                    {uniqueValues('clientName').map((v) => (
+                      <option key={v} value={v}>{v}</option>
+                    ))}
+                  </select>
+                </th>
+                <th className="px-5 py-2 font-normal">
+                  <select
+                    value={filters.banco}
+                    onChange={(e) => setFilters((f) => ({ ...f, banco: e.target.value }))}
+                    className="w-full border border-gray-300 rounded-md px-2 py-1.5 text-xs text-gray-700 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  >
+                    <option value="">Todos</option>
+                    {uniqueValues('bank').map((v) => (
+                      <option key={v} value={v}>{v}</option>
+                    ))}
+                  </select>
+                </th>
+                <th className="px-5 py-2 font-normal">
+                  <select
+                    value={filters.statusConexao}
+                    onChange={(e) => setFilters((f) => ({ ...f, statusConexao: e.target.value }))}
+                    className="w-full border border-gray-300 rounded-md px-2 py-1.5 text-xs text-gray-700 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  >
+                    <option value="">Todos</option>
+                    {uniqueValues('rawStatus').map((v) => (
+                      <option key={v} value={v}>{v}</option>
+                    ))}
+                  </select>
+                </th>
+                <th className="px-5 py-2 font-normal">
+                  <select
+                    value={filters.situacao}
+                    onChange={(e) => setFilters((f) => ({ ...f, situacao: e.target.value }))}
+                    className="w-full border border-gray-300 rounded-md px-2 py-1.5 text-xs text-gray-700 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  >
+                    <option value="">Todas</option>
+                    {uniqueValues('status').map((v) => (
+                      <option key={v} value={v}>{v}</option>
+                    ))}
+                  </select>
+                </th>
+                <th className="px-5 py-2 font-normal"></th>
               </tr>
             </thead>
             <tbody>
