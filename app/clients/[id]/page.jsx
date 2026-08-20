@@ -313,8 +313,10 @@ export default function ClientPage({ params }) {
     const groups = new Map();
 
     for (const item of items) {
-      const consentId = item.klaviConsentId || item.pluggyItemId || item.id;
-      const key = `${item.institutionName || ''}|${consentId}`;
+      // Agrupa por instituição (código/nome) em vez de consentId/linkId.
+      // Isso evita que reconexões da Klavi/Open Finance criem cards duplicados
+      // quando o mesmo banco gera novo consentimento/link.
+      const key = `${item.institutionCode || ''}|${item.institutionName || ''}`;
 
       if (!groups.has(key)) {
         groups.set(key, []);
