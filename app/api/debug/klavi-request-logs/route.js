@@ -1,10 +1,17 @@
 import { NextResponse } from 'next/server';
-import { getCompanyPool, requireEmpresaFromHeader } from '@/lib/company-db';
+import { getCompanyPool, requireEmpresaFromHeader, sanitizeEmpresa } from '@/lib/company-db';
 import { getKlaviRequestLogs, countKlaviRequestLogs } from '@/lib/storage-company';
 
 export const dynamic = 'force-dynamic';
 
 const SALT = 'pluggy-admin-2024';
+
+function requireEmpresa(request) {
+  const { searchParams } = new URL(request.url);
+  const queryEmpresa = sanitizeEmpresa(searchParams.get('empresa') || '');
+  if (queryEmpresa) return queryEmpresa;
+  return requireEmpresaFromHeader(request);
+}
 
 async function sessionToken(password) {
   const enc = new TextEncoder();
@@ -41,7 +48,7 @@ export async function GET(request) {
 
   let pool;
   try {
-    const empresa = requireEmpresaFromHeader(request);
+    const empresa = requireEmpresa(request);
     pool = await getCompanyPool(empresa);
   } catch (err) {
     return NextResponse.json({ error: err.message }, { status: 400 });

@@ -57,9 +57,8 @@ export default function KlaviLogsPage() {
       Object.entries(filters).forEach(([k, v]) => {
         if (v) params.set(k, v);
       });
-      const res = await fetch(`/api/debug/klavi-request-logs?${params.toString()}`, {
-        headers: { 'x-extrator-empresa': empresa.trim() },
-      });
+      params.set('empresa', empresa.trim());
+      const res = await fetch(`/api/debug/klavi-request-logs?${params.toString()}`);
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || `Erro ${res.status}`);
       setLogs(data.logs || []);
