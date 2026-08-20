@@ -5,6 +5,8 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft, LogOut, Search, Filter, ChevronLeft, ChevronRight, RefreshCw, Server } from 'lucide-react';
 
+const DEFAULT_EMPTY_MESSAGE = 'Informe a empresa e clique em Filtrar.';
+
 const METHOD_STYLES = {
   GET: 'bg-blue-100 text-blue-700 border-blue-200',
   POST: 'bg-green-100 text-green-700 border-green-200',
@@ -20,6 +22,7 @@ const STATUS_STYLES = {
 export default function KlaviLogsPage() {
   const router = useRouter();
   const [empresa, setEmpresa] = useState('');
+  const [companies, setCompanies] = useState([]);
   const [logs, setLogs] = useState([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
@@ -45,7 +48,7 @@ export default function KlaviLogsPage() {
 
   const fetchLogs = useCallback(async ({ resetOffset = false } = {}) => {
     if (!empresa.trim()) {
-      setError('Informe a empresa no header x-extrator-empresa');
+      setError(DEFAULT_EMPTY_MESSAGE);
       return;
     }
     setLoading(true);
@@ -74,6 +77,14 @@ export default function KlaviLogsPage() {
     // Carrega empresa salva no localStorage, se houver.
     const saved = localStorage.getItem('extrator_empresa');
     if (saved) setEmpresa(saved);
+
+    // Carrega lista de empresas ativas para o dropdown.
+    fetch('/api/gestor-companies')
+      .then((r) => r.json())
+      .then((data) => {
+        if (Array.isArray(data)) setCompanies(data);
+      })
+      .catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -164,9 +175,21 @@ export default function KlaviLogsPage() {
             <p className="text-sm text-gray-500">POST, GET e DELETE feitos para a API Klavi por empresa</p>
           </div>
           <div className="flex items-center gap-2">
+            <select
+              value={empresa}
+              onChange={(e) => setEmpresa(e.target.value)}
+              className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+            >
+              <option value="">Selecione a empresa</option>
+              {companies.map((c) => (
+                <option key={c.slug} value={c.slug}>
+                  {c.name || c.slug}
+                </option>
+              ))}
+            </select>
             <input
               type="text"
-              placeholder="Empresa (slug)"
+              placeholder="Ou digite o slug"
               value={empresa}
               onChange={(e) => setEmpresa(e.target.value)}
               className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"

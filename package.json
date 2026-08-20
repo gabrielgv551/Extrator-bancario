@@ -7,6 +7,7 @@
     "build": "next build",
     "start": "next start",
     "setup-db": "node scripts/setup-db.mjs",
+    "apply-schema": "node scripts/apply-schema-all.mjs",
     "batch-sync": "node scripts/batch-sync.mjs",
     "docker:build:batch": "docker build -f Dockerfile.batch -t extrator-bancario-sync ."
   },

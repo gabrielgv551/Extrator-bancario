@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import crypto from 'crypto';
 import { getCompanyPool, requireEmpresaFromHeader, sanitizeEmpresa } from '@/lib/company-db';
 import { getKlaviRequestLogs, countKlaviRequestLogs } from '@/lib/storage-company';
 
@@ -13,19 +14,16 @@ function requireEmpresa(request) {
   return requireEmpresaFromHeader(request);
 }
 
-async function sessionToken(password) {
-  const enc = new TextEncoder();
-  const key = await crypto.subtle.importKey('raw', enc.encode(SALT), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
-  const sig = await crypto.subtle.sign('HMAC', key, enc.encode(password));
-  return Array.from(new Uint8Array(sig)).map((b) => b.toString(16).padStart(2, '0')).join('');
+function sessionToken(password) {
+  return crypto.createHmac('sha256', SALT).update(password).digest('hex');
 }
 
-async function isAdmin(request) {
+function isAdmin(request) {
   const password = process.env.ADMIN_PASSWORD;
   if (!password) return false;
   const session = request.cookies.get('admin_session')?.value;
   if (!session) return false;
-  const expected = await sessionToken(password);
+  const expected = sessionToken(password);
   return session === expected;
 }
 
@@ -36,13 +34,13 @@ function hasCronSecret(request) {
   return authHeader === `Bearer ${secret}`;
 }
 
-async function checkAuth(request) {
+function checkAuth(request) {
   if (hasCronSecret(request)) return true;
   return isAdmin(request);
 }
 
 export async function GET(request) {
-  if (!await checkAuth(request)) {
+  if (!checkAuth(request)) {
     return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
   }
 

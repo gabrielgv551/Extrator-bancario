@@ -218,6 +218,9 @@ node scripts/backfill.mjs [from] [to]
 
 # Vincular cliente a empresa do Have Gestor
 node scripts/link-empresas.mjs set "Nome Cliente" empresa
+
+# Aplicar schema atual em todos os bancos de empresas ativas (use após alterar lib/setup-company-db.js)
+node scripts/apply-schema-all.mjs
 ```
 
 ---
