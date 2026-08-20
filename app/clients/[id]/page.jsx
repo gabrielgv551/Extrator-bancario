@@ -224,9 +224,13 @@ export default function ClientPage({ params }) {
     setTestingProducts(itemId);
     setProductTestResult(null);
     try {
+      const empresa = client?.gestorEmpresa || '';
       const res = await fetch('/api/debug/klavi-product-test', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(empresa ? { 'x-extrator-empresa': empresa } : {}),
+        },
         body: JSON.stringify({ itemId }),
       });
       const data = await res.json();
