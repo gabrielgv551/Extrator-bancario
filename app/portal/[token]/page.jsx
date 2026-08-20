@@ -176,7 +176,7 @@ export default function PortalPage({ params }) {
           klaviLinkId: data.linkId,
           klaviConsentId: null,
           institutionCode: null,
-          institutionName: 'Banco selecionado no widget Klavi',
+          institutionName: 'Banco em conexão',
           institutionLogo: null,
           businessTaxId,
           personalTaxId,

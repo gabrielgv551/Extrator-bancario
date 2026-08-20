@@ -29,8 +29,17 @@ export async function GET(request, { params }) {
       items.filter((i) => i.provider === 'klavi').map((i) => i.id)
     );
 
+    const hasTime = (iso) => {
+      const d = new Date(iso);
+      return d.getUTCHours() !== 0 || d.getUTCMinutes() !== 0 || d.getUTCSeconds() !== 0;
+    };
+
     const rows = transactions.map((tx) => ({
       Data: new Date(tx.date).toLocaleDateString('pt-BR'),
+      Hora: hasTime(tx.date)
+        ? new Date(tx.date).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', hour12: false })
+        : '',
+      'Data/Hora UTC': hasTime(tx.date) ? new Date(tx.date).toISOString() : new Date(tx.date).toISOString().split('T')[0],
       Descrição: tx.description ?? '',
       Tipo: tx.type === 'CREDIT' ? 'Entrada' : 'Saída',
       'Valor (R$)': Number(tx.amount),

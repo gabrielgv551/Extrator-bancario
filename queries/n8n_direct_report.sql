@@ -2,6 +2,7 @@ SELECT
   id,
   cliente,
   data_lancamento,
+  hora_lancamento,
   data_transacao,
   descricao,
   tipo,
@@ -18,12 +19,14 @@ SELECT
   cnpj_cpf,
   origem,
   status,
+  api_order,
   data_lancamento_raw
 FROM (
   SELECT
     t.id,
     c.name AS cliente,
     to_char(t.date::date, 'DD/MM/YYYY') AS data_lancamento,
+    to_char(t.date, 'HH24:MI:SS') AS hora_lancamento,
     to_char(t.date_transacted::date, 'DD/MM/YYYY') AS data_transacao,
     t.description AS descricao,
     CASE WHEN t.type = 'CREDIT' THEN 'Entrada' ELSE 'Saida' END AS tipo,
@@ -47,6 +50,7 @@ FROM (
     END AS cnpj_cpf,
     'Conta Bancaria' AS origem,
     t.status,
+    t.api_order,
     t.date::date AS data_lancamento_raw
   FROM transactions t
   LEFT JOIN clients c ON c.id = t.client_id
@@ -57,6 +61,7 @@ FROM (
     ct.id,
     c.name AS cliente,
     to_char(ct.date::date, 'DD/MM/YYYY') AS data_lancamento,
+    to_char(ct.date, 'HH24:MI:SS') AS hora_lancamento,
     to_char(ct.date_transacted::date, 'DD/MM/YYYY') AS data_transacao,
     ct.description AS descricao,
     CASE WHEN ct.type = 'CREDIT' THEN 'Entrada' ELSE 'Saida' END AS tipo,
@@ -80,8 +85,9 @@ FROM (
     END AS cnpj_cpf,
     'Cartao de Credito' AS origem,
     ct.status,
+    ct.api_order,
     ct.date::date AS data_lancamento_raw
   FROM credit_transactions ct
   LEFT JOIN clients c ON c.id = ct.client_id
 ) all_tx
-ORDER BY data_lancamento_raw ASC;
+ORDER BY data_lancamento_raw ASC, api_order ASC;

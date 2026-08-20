@@ -31,13 +31,20 @@ export async function GET(request, { params }) {
       return doc;
     };
 
-    const header = 'ID,Cliente,Data,Data Transação,Descrição,Tipo,Valor (R$),Saldo,Categoria L1,Categoria L2,Categoria L3,Conta,Agência/Número,Tipo de Conta,Banco,Razão Social,CNPJ/CPF,Origem,Status\n';
+    const hasTime = (iso) => {
+      const d = new Date(iso);
+      return d.getUTCHours() !== 0 || d.getUTCMinutes() !== 0 || d.getUTCSeconds() !== 0;
+    };
+
+    const header = 'ID,Cliente,Data,Hora,Data/Hora UTC,Data Transação,Descrição,Tipo,Valor (R$),Saldo,Categoria L1,Categoria L2,Categoria L3,Conta,Agência/Número,Tipo de Conta,Banco,Razão Social,CNPJ/CPF,Origem,Status\n';
     const rows = transactions
       .map((tx) =>
         [
           tx.id,
           `"${(client.name || '').replace(/"/g, '""')}"`,
           new Date(tx.date).toLocaleDateString('pt-BR'),
+          hasTime(tx.date) ? new Date(tx.date).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', hour12: false }) : '',
+          hasTime(tx.date) ? new Date(tx.date).toISOString() : new Date(tx.date).toISOString().split('T')[0],
           tx.dateTransacted ? new Date(tx.dateTransacted).toLocaleDateString('pt-BR') : '',
           `"${(tx.description || '').replace(/"/g, '""')}"`,
           tx.type === 'CREDIT' ? 'Entrada' : 'Saída',

@@ -4,6 +4,7 @@ SELECT
   a.id,
   a.client_name AS cliente,
   to_char(a.date::date, 'DD/MM/YYYY') AS data_lancamento,
+  to_char(a.date, 'HH24:MI:SS') AS hora_lancamento,
   to_char(a.date_transacted, 'DD/MM/YYYY') AS data_transacao,
   a.description AS descricao,
   CASE WHEN a.type = 'CREDIT' THEN 'Entrada' ELSE 'Saida' END AS tipo,
@@ -27,9 +28,10 @@ SELECT
   END AS cnpj_cpf,
   CASE WHEN a.source = 'credit' THEN 'Cartao de Credito' ELSE 'Conta Bancaria' END AS origem,
   a.status,
+  a.api_order,
   a.date AS data_lancamento_raw
 FROM all_transactions a
-ORDER BY a.date DESC;
+ORDER BY a.date DESC, a.api_order ASC;
 
 -- Para atualizar os dados:
 -- REFRESH MATERIALIZED VIEW mv_report_transactions;

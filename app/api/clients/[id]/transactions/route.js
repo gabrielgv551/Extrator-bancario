@@ -33,7 +33,11 @@ export async function GET(request, { params }) {
     }));
 
     const transactions = await getTransactionsByClientId(pool, id, { from, to });
-    transactions.sort((a, b) => new Date(b.date) - new Date(a.date));
+    transactions.sort((a, b) => {
+      const dateDiff = new Date(b.date) - new Date(a.date);
+      if (dateDiff !== 0) return dateDiff;
+      return (a.apiOrder ?? Number.MAX_SAFE_INTEGER) - (b.apiOrder ?? Number.MAX_SAFE_INTEGER);
+    });
 
     await updateClient(pool, id, { lastSync: new Date().toISOString() });
 

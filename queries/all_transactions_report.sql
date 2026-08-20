@@ -2,6 +2,7 @@ SELECT
   a.id AS id,
   a.client_name AS cliente,
   a.date::date AS data_lancamento,
+  to_char(a.date, 'HH24:MI:SS') AS hora_lancamento,
   to_char(a.date_transacted, 'DD/MM/YYYY') AS data_transacao,
   a.description AS descricao,
   CASE WHEN a.type = 'CREDIT' THEN 'Entrada' ELSE 'Saida' END AS tipo,
@@ -24,7 +25,8 @@ SELECT
     ELSE a.counterparty_document
   END AS cnpj_cpf,
   CASE WHEN a.source = 'credit' THEN 'Cartao de Credito' ELSE 'Conta Bancaria' END AS origem,
-  a.status AS status
+  a.status AS status,
+  a.api_order
 FROM all_transactions a
 WHERE a.status = 'POSTED'
-ORDER BY a.date ASC;
+ORDER BY a.date ASC, a.api_order ASC;
