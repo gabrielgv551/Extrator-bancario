@@ -163,13 +163,18 @@ async function persistReport(pool, localItem, payload) {
   });
 
   const persistedAccountNumbers = mapped.accounts.map(a => a.number).filter(Boolean);
-  const uniqueAccountNumbers = [...new Set(persistedAccountNumbers)].join(', ');
-  console.log('[klavi webhook] relatório persistido item=%s product=%s bank=%d credit=%d inv=%d debts=%d dedup=%j accounts=%j',
-    localItem.id, productName, savedBank, savedCredit, savedInv, savedDebts, dedup, uniqueAccountNumbers || null);
+  const currentAccountNumbers = String(localItem?.accountNumbers || '')
+    .split(',')
+    .map(s => s.trim())
+    .filter(Boolean);
+  const mergedAccountNumbers = [...new Set([...currentAccountNumbers, ...persistedAccountNumbers])].join(', ');
+  console.log('[klavi webhook] relatório persistido item=%s product=%s bank=%d credit=%d inv=%d debts=%d dedup=%j accounts=%j merged=%j',
+    localItem.id, productName, savedBank, savedCredit, savedInv, savedDebts, dedup, persistedAccountNumbers, mergedAccountNumbers);
 
-  // Atualiza números de conta para exibição no portal.
-  if (uniqueAccountNumbers) {
-    await updateItemStatus(pool, localItem.id, { accountNumbers: uniqueAccountNumbers || null }).catch(() => {});
+  // Atualiza números de conta para exibição no portal, preservando números já conhecidos.
+  // Isso evita que um webhook só de cartão apague o número da conta corrente.
+  if (mergedAccountNumbers) {
+    await updateItemStatus(pool, localItem.id, { accountNumbers: mergedAccountNumbers }).catch(() => {});
   }
 }
 
