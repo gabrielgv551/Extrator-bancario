@@ -2,6 +2,7 @@
 
 import { useState, useEffect, use } from 'react';
 import { Plus, Trash2, Building2, Wifi, AlertCircle, CheckCircle, Loader2, RefreshCw } from 'lucide-react';
+import { resolveDisplayName } from '@/lib/institution-names';
 
 export default function PortalPage({ params }) {
   const { token } = use(params);
@@ -29,6 +30,42 @@ export default function PortalPage({ params }) {
   };
 
   useEffect(() => { fetchData(); }, [token]);
+
+  // Polling: verifica consentimentos autorizados para itens em espera.
+  useEffect(() => {
+    if (items.length === 0) return;
+    const waitingItems = items.filter(i => i.status === 'WAITING_DATA' && i.klaviLinkId && !i.klaviConsentId);
+    if (waitingItems.length === 0) return;
+
+    let attempts = 0;
+    const maxAttempts = 24; // 2 minutos
+    const interval = setInterval(async () => {
+      attempts++;
+      let foundAny = false;
+      for (const item of waitingItems) {
+        try {
+          const res = await fetch(`/api/portal/${token}/check-consent`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ linkId: item.klaviLinkId }),
+          });
+          const data = await res.json();
+          if (data.found) {
+            foundAny = true;
+            showMessage(data.message || 'Banco autorizado.', 'success');
+          }
+        } catch (e) {
+          // ignora erro de polling
+        }
+      }
+      await fetchData();
+      if (foundAny || attempts >= maxAttempts) {
+        clearInterval(interval);
+      }
+    }, 5000);
+
+    return () => clearInterval(interval);
+  }, [items, token]);
 
   const showMessage = (text, type = 'success') => {
     setMessage({ text, type });
@@ -207,6 +244,27 @@ export default function PortalPage({ params }) {
     }
   };
 
+  const handleCheckConsent = async (item) => {
+    setMessage(null);
+    try {
+      const res = await fetch(`/api/portal/${token}/check-consent`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ linkId: item.klaviLinkId }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      await fetchData();
+      if (data.found) {
+        showMessage(data.message || 'Banco autorizado.', 'success');
+      } else {
+        showMessage(data.message || 'Ainda aguardando autorização no banco.', 'info');
+      }
+    } catch (e) {
+      showMessage(e.message, 'error');
+    }
+  };
+
   const handleReconnect = (item) => {
     // Reconexão segue o mesmo fluxo de nova conexão: escolhe PF/PJ, preenche CPF/CNPJ e abre widget Klavi.
     setSelectedTaxType(item.taxType || null);
@@ -295,7 +353,7 @@ export default function PortalPage({ params }) {
                   {group.institutionLogo ? (
                     <img
                       src={group.institutionLogo}
-                      alt={group.institutionName}
+                      alt={resolveDisplayName(group)}
                       className="w-11 h-11 rounded-xl object-contain border border-gray-100 p-1"
                     />
                   ) : (
@@ -304,7 +362,7 @@ export default function PortalPage({ params }) {
                     </div>
                   )}
                   <div className="flex-1 min-w-0">
-                    <p className="font-semibold text-gray-900 text-sm truncate">{group.institutionName}</p>
+                    <p className="font-semibold text-gray-900 text-sm truncate">{resolveDisplayName(group)}</p>
                     <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
                       <span className={`w-1.5 h-1.5 rounded-full ${s.color} inline-block`}></span>
                       <span className={`text-xs font-medium ${s.text}`}>{s.label}</span>
@@ -332,6 +390,15 @@ export default function PortalPage({ params }) {
                         <RefreshCw className="w-4 h-4" />
                       </button>
                     )}
+                    {group.status === 'WAITING_DATA' && group.klaviLinkId && (
+                      <button
+                        onClick={() => handleCheckConsent({ ...group, id: group.contaItemId || group.id })}
+                        className="text-yellow-500 hover:text-yellow-600 hover:bg-yellow-50 p-2 rounded-lg transition-colors"
+                        title="Verificar autorização no banco"
+                      >
+                        <CheckCircle className="w-4 h-4" />
+                      </button>
+                    )}
                     <button
                       onClick={() => handleReconnect({ ...group, id: group.contaItemId || group.id })}
                       disabled={connecting}
@@ -341,7 +408,7 @@ export default function PortalPage({ params }) {
                       <Wifi className="w-4 h-4" />
                     </button>
                     <button
-                      onClick={() => removeBank(group.contaItemId || group.id, group.institutionName)}
+                      onClick={() => removeBank(group.contaItemId || group.id, resolveDisplayName(group))}
                       disabled={removingId === (group.contaItemId || group.id)}
                       className="text-red-400 hover:text-red-600 hover:bg-red-50 p-2 rounded-lg transition-colors disabled:opacity-50"
                       title="Desconectar"

@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { getClientByToken, addKlaviItem, getItemsByClientId } from '@/lib/storage-company';
 import { getEmpresaByToken, registerItemLocation } from '@/lib/central-token-map';
 import { getCompanyPool } from '@/lib/company-db';
-import { createLink, getConsentList, getInstitutions, requestBusinessInstitutionData, requestPersonalInstitutionData, DEFAULT_KLAVI_PRODUCTS } from '@/lib/klavi';
+import { createLink, getConsentList, getInstitutions, requestBusinessInstitutionData, requestPersonalInstitutionData, resolveInstitutionNameByCode, DEFAULT_KLAVI_PRODUCTS } from '@/lib/klavi';
 import { v4 as uuidv4 } from 'uuid';
 
 export const dynamic = 'force-dynamic';
@@ -100,6 +100,7 @@ export async function POST(request, { params }) {
             const institutionCode = consent.institutionCode || consent.institution_code;
             const institutionName = consent.institutionName || consent.institution_name ||
               institutionsByCode[String(institutionCode).toLowerCase()] ||
+              resolveInstitutionNameByCode(institutionCode) ||
               `Banco ${institutionCode}`;
             const item = await addKlaviItem(pool, {
               id: itemId,

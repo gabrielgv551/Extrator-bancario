@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { getClientByToken, addKlaviItem, getItemByKlaviLinkId, updateItemStatus } from '@/lib/storage-company';
 import { getEmpresaByToken, registerItemLocation } from '@/lib/central-token-map';
 import { getCompanyPool } from '@/lib/company-db';
-import { requestBusinessInstitutionData, requestPersonalInstitutionData, getConsentList, isPlaceholderInstitutionName, DEFAULT_KLAVI_PRODUCTS } from '@/lib/klavi';
+import { requestBusinessInstitutionData, requestPersonalInstitutionData, getConsentList, isPlaceholderInstitutionName, resolveInstitutionNameByCode, DEFAULT_KLAVI_PRODUCTS } from '@/lib/klavi';
 import { v4 as uuidv4 } from 'uuid';
 
 export const dynamic = 'force-dynamic';
@@ -64,47 +64,74 @@ export async function GET(request, { params }) {
       }).catch(err => console.error('[portal/callback] falha ao registrar item location:', err.message));
     }
 
-    // Se recebemos consentId, consulta a API Klavi para preencher institutionCode/name/logo o quanto antes.
+    // Sempre tenta consultar a API Klavi para preencher institutionCode/name/logo o quanto antes.
+    // Mesmo sem consentId na URL, a lista de consentimentos pode trazer o consent vinculado ao linkId.
     const logMeta = { pool, source: 'portal', clientId: client.id, itemId: item.id, linkId, consentId };
+    let resolvedConsentId = consentId || item.klaviConsentId || null;
 
-    if (consentId) {
-      try {
-        const listParams = {};
-        const isPF = item.taxType === 'pf';
-        const businessTaxId = item.businessTaxId || client.businessTaxId;
-        const personalTaxId = item.personalTaxId || client.personalTaxId;
-        if (!isPF && businessTaxId) listParams.businessTaxId = businessTaxId;
-        if (personalTaxId) listParams.personalTaxId = personalTaxId;
-        if (linkId) listParams.linkId = linkId;
+    try {
+      const listParams = {};
+      const isPF = item.taxType === 'pf';
+      const businessTaxId = item.businessTaxId || client.businessTaxId;
+      const personalTaxId = item.personalTaxId || client.personalTaxId;
+      if (!isPF && businessTaxId) listParams.businessTaxId = businessTaxId;
+      if (personalTaxId) listParams.personalTaxId = personalTaxId;
+      if (linkId) listParams.linkId = linkId;
 
-        const listData = await getConsentList(listParams, logMeta);
-        const consents = Array.isArray(listData) ? listData : (listData?.consents || []);
-        const consent = consents.find(c =>
-          String(c.consentId || c.consentid || '').toLowerCase() === String(consentId).toLowerCase() ||
-          String(c.linkId || c.linkid || '').toLowerCase() === String(linkId).toLowerCase()
-        );
+      console.log('[portal callback] buscando consentimentos linkId=%s params=%j', linkId, listParams);
+      const listData = await getConsentList(listParams, logMeta);
+      const consents = Array.isArray(listData) ? listData : (listData?.consents || []);
+      console.log('[portal callback] %d consentimento(s) encontrado(s)', consents.length);
 
-        if (consent) {
-          const institutionCode = consent.institutionCode || consent.institution_code || null;
-          const institutionName = consent.institutionName || consent.institution_name || null;
-          const institutionLogo = consent.institutionLogo || consent.institution_logo || null;
-          const updates = {};
-          const shouldUpdateInstitution = isPlaceholderInstitutionName(item.institutionName) ||
-            isPlaceholderInstitutionName(item.institutionCode);
+      const consent = resolvedConsentId
+        ? consents.find(c =>
+            String(c.consentId || c.consentid || '').toLowerCase() === String(resolvedConsentId).toLowerCase() ||
+            String(c.linkId || c.linkid || '').toLowerCase() === String(linkId).toLowerCase()
+          )
+        : consents.find(c =>
+            String(c.linkId || c.linkid || '').toLowerCase() === String(linkId).toLowerCase() &&
+            ['authorised', 'authorized'].includes(String(c.status).toLowerCase())
+          );
 
-          if (institutionCode && (!item.institutionCode || shouldUpdateInstitution)) updates.institutionCode = institutionCode;
-          if (institutionName && (!item.institutionName || isPlaceholderInstitutionName(item.institutionName))) updates.institutionName = institutionName;
-          if (institutionLogo && (!item.institutionLogo || isPlaceholderInstitutionName(item.institutionName))) updates.institutionLogo = institutionLogo;
-
-          if (Object.keys(updates).length > 0) {
-            await updateItemStatus(pool, item.id, updates);
-            item = { ...item, ...updates };
-            console.log('[portal callback] item=%s atualizado com dados do consentimento: %j', item.id, updates);
-          }
+      if (consent) {
+        const institutionCode = consent.institutionCode || consent.institution_code || null;
+        let institutionName = consent.institutionName || consent.institution_name || null;
+        // Se a Klavi devolveu o código mas não o nome (caso SICOOB), resolve pelo fallback.
+        if (!institutionName && institutionCode) {
+          institutionName = resolveInstitutionNameByCode(institutionCode);
         }
-      } catch (consentErr) {
-        console.warn('[portal callback] falha ao buscar detalhes do consentimento (não crítica):', consentErr.message);
+        const institutionLogo = consent.institutionLogo || consent.institution_logo || null;
+        const foundConsentId = consent.consentId || consent.consentid || resolvedConsentId || null;
+        const updates = {};
+        const shouldUpdateInstitution = isPlaceholderInstitutionName(item.institutionName) ||
+          isPlaceholderInstitutionName(item.institutionCode);
+
+        if (institutionCode && (!item.institutionCode || shouldUpdateInstitution)) updates.institutionCode = institutionCode;
+        if (institutionName && (!item.institutionName || isPlaceholderInstitutionName(item.institutionName))) updates.institutionName = institutionName;
+        if (institutionLogo && (!item.institutionLogo || isPlaceholderInstitutionName(item.institutionName))) updates.institutionLogo = institutionLogo;
+        if (foundConsentId && !item.klaviConsentId) updates.klaviConsentId = foundConsentId;
+
+        if (Object.keys(updates).length > 0) {
+          await updateItemStatus(pool, item.id, updates);
+          item = { ...item, ...updates };
+          console.log('[portal callback] item=%s atualizado com dados do consentimento: %j', item.id, updates);
+        }
+
+        if (foundConsentId && !resolvedConsentId) {
+          resolvedConsentId = foundConsentId;
+          // Atualiza o mapeamento central com o consentId descoberto, para que webhooks futuros resolvam a empresa.
+          await registerItemLocation(empresa, {
+            itemId: item.id,
+            clientId: client.id,
+            klaviLinkId: linkId,
+            klaviConsentId: foundConsentId,
+          }).catch(err => console.error('[portal callback] falha ao re-registrar item location com consentId:', err.message));
+        }
+      } else {
+        console.log('[portal callback] nenhum consentimento autorizado encontrado para linkId=%s consentId=%s', linkId, resolvedConsentId);
       }
+    } catch (consentErr) {
+      console.warn('[portal callback] falha ao buscar detalhes do consentimento (não crítica):', consentErr.message);
     }
 
     // Solicita relatório. O webhook de consent/authorised também pode disparar, mas
@@ -117,7 +144,7 @@ export async function GET(request, { params }) {
         const requestBody = {
           institutionCode: item.institutionCode,
           linkId,
-          consentIds: consentId ? [consentId] : [],
+          consentIds: resolvedConsentId ? [resolvedConsentId] : [],
           products: DEFAULT_KLAVI_PRODUCTS,
           productsCallbackUrl: process.env.KLAVI_WEBHOOK_URL || null,
         };
@@ -133,10 +160,10 @@ export async function GET(request, { params }) {
         // Não retorna erro: o webhook pode completar o processo.
       }
     } else {
-      console.log('[portal callback] institutionCode não disponível ainda; aguardando webhook. linkId=%s consentId=%s', linkId, consentId);
+      console.log('[portal callback] institutionCode não disponível ainda; aguardando webhook. linkId=%s consentId=%s', linkId, resolvedConsentId);
     }
 
-    await updateItemStatus(pool, item.id, { status: consentId ? 'UPDATING' : 'WAITING_DATA', klaviConsentId: consentId || item.klaviConsentId });
+    await updateItemStatus(pool, item.id, { status: resolvedConsentId ? 'UPDATING' : 'WAITING_DATA', klaviConsentId: resolvedConsentId || item.klaviConsentId });
 
     return NextResponse.json({
       success: true,

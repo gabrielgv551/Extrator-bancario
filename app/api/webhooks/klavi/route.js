@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import {
-  getItemByKlaviLinkId, getItemByKlaviConsentId, getClientById,
+  getItemById, getItemByKlaviLinkId, getItemByKlaviConsentId, getClientById,
   updateItemStatus, recordWebhookEvent, hasWebhookEvent, recordKlaviWebhookDebug,
   upsertTransactionsBatch, upsertCreditTransactionsBatch,
   upsertInvestments, upsertDebts, upsertDerivedDebts,
@@ -8,11 +8,13 @@ import {
 } from '@/lib/storage-company';
 import { getEmpresaByItem } from '@/lib/central-token-map';
 import { getCompanyPool } from '@/lib/company-db';
-import { mapKlaviReportToLocal, normalizeKlaviStatus, isKlaviConsentAuthorised, isKlaviConsentRejected, isPlaceholderInstitutionName, requestBusinessInstitutionData, requestPersonalInstitutionData, DEFAULT_KLAVI_PRODUCTS } from '@/lib/klavi';
+import { mapKlaviReportToLocal, normalizeKlaviStatus, isKlaviConsentAuthorised, isKlaviConsentRejected, isPlaceholderInstitutionName, resolveInstitutionNameByCode, requestBusinessInstitutionData, requestPersonalInstitutionData, DEFAULT_KLAVI_PRODUCTS } from '@/lib/klavi';
 import { enrichTransactionsWithCompanyName } from '@/lib/cnpj-enrichment';
 import { buildItemStatusUpdates } from '@/lib/status';
 
 export const dynamic = 'force-dynamic';
+
+const DEFAULT_KLAVI_TRANSACTION_PERIOD = process.env.KLAVI_TRANSACTION_PERIOD || '3';
 
 function isAuthorized(request) {
   const secret = process.env.KLAVI_WEBHOOK_SECRET || process.env.CRON_SECRET;
@@ -52,10 +54,14 @@ function extractConsentMetadata(payload) {
     institution?.code || institution?.institutionCode ||
     consent?.institutionCode || consent?.institution_code ||
     payload?.institutionCode || payload?.institution_code || null;
-  const institutionName =
+  let institutionName =
     institution?.name || institution?.institutionName ||
     consent?.institutionName || consent?.institution_name ||
     payload?.institutionName || payload?.institution_name || null;
+  // Se a Klavi mandou o código mas não o nome (comum no SICOOB), resolve pelo fallback.
+  if (!institutionName && institutionCode) {
+    institutionName = resolveInstitutionNameByCode(institutionCode);
+  }
   const institutionLogo =
     institution?.logo || institution?.institutionLogo ||
     consent?.institutionLogo || consent?.institution_logo ||
@@ -76,11 +82,13 @@ async function findLocalItem(pool, { linkId, consentId }) {
 }
 
 async function persistReport(pool, localItem, payload) {
-  const { report, productName, institutionCode } = extractReportMetadata(payload);
+  const { report, productName, institutionCode, eventId } = extractReportMetadata(payload);
   if (!report || !productName) {
     console.warn('[klavi webhook] payload não reconhecido como relatório:', Object.keys(payload));
     return;
   }
+
+  console.log('[klavi webhook] persistReport iniciado item=%s product=%s eventId=%s', localItem.id, productName, eventId);
 
   // Debug: mostra estrutura bruta das transações e contas recebidas.
   try {
@@ -107,7 +115,7 @@ async function persistReport(pool, localItem, payload) {
   }
 
   // Extrai o nome real do banco a partir de todas as fontes de conta do relatório.
-  const reportInstitutionName =
+  let reportInstitutionName =
     report?.checkingAccounts?.[0]?.brandName ||
     report?.checkingAccounts?.[0]?.name ||
     report?.savingsAccounts?.[0]?.brandName ||
@@ -122,6 +130,11 @@ async function persistReport(pool, localItem, payload) {
     report?.creditCards?.[0]?.name ||
     null;
 
+  // Se o relatório não trouxe nome, tenta resolver pelo institutionCode (fallback SICOOB etc.).
+  if (!reportInstitutionName && institutionCode) {
+    reportInstitutionName = resolveInstitutionNameByCode(institutionCode);
+  }
+
   // Se o item ainda tem nome placeholder, substitui pelo nome real do relatório.
   const institutionName = !isPlaceholderInstitutionName(localItem?.institutionName)
     ? localItem.institutionName
@@ -133,25 +146,58 @@ async function persistReport(pool, localItem, payload) {
     });
   }
 
+  let mapped;
+  try {
+    mapped = mapKlaviReportToLocal({ productName, report, institutionCode, institutionName });
+    console.log('[klavi webhook] mapeado item=%s bankTx=%d creditTx=%d accounts=%d',
+      localItem.id, mapped.bankTransactions.length, mapped.creditTransactions.length, mapped.accounts.length);
+  } catch (err) {
+    console.error('[klavi webhook] erro ao mapear relatório item=%s:', localItem.id, err.message);
+    return;
+  }
+
   const client = await getClientById(pool, localItem.clientId).catch(() => null);
   const clientName = client?.name || localItem?.clientName || null;
-  const mapped = mapKlaviReportToLocal({ productName, report, institutionCode, institutionName });
 
   // Enriquece CNPJ da contraparte com razão social via API externa.
-  await enrichTransactionsWithCompanyName(mapped.bankTransactions);
-  await enrichTransactionsWithCompanyName(mapped.creditTransactions);
+  try {
+    await enrichTransactionsWithCompanyName(mapped.bankTransactions);
+    await enrichTransactionsWithCompanyName(mapped.creditTransactions);
+  } catch (err) {
+    console.error('[klavi webhook] erro no enriquecimento de CNPJ item=%s:', localItem.id, err.message);
+  }
 
-  const savedBank = mapped.bankTransactions.length
-    ? await upsertTransactionsBatch(pool, localItem.clientId, clientName, localItem.id, mapped.bankTransactions)
-    : 0;
-  const savedCredit = mapped.creditTransactions.length
-    ? await upsertCreditTransactionsBatch(pool, localItem.clientId, clientName, localItem.id, mapped.creditTransactions)
-    : 0;
+  let savedBank = 0;
+  let savedCredit = 0;
+  try {
+    if (mapped.bankTransactions.length) {
+      savedBank = await upsertTransactionsBatch(pool, localItem.clientId, clientName, localItem.id, mapped.bankTransactions);
+      console.log('[klavi webhook] bankTransactions salvas item=%s: %d', localItem.id, savedBank);
+    }
+  } catch (err) {
+    console.error('[klavi webhook] erro ao salvar bankTransactions item=%s:', localItem.id, err.message, err.stack);
+  }
+
+  try {
+    if (mapped.creditTransactions.length) {
+      savedCredit = await upsertCreditTransactionsBatch(pool, localItem.clientId, clientName, localItem.id, mapped.creditTransactions);
+      console.log('[klavi webhook] creditTransactions salvas item=%s: %d', localItem.id, savedCredit);
+    }
+  } catch (err) {
+    console.error('[klavi webhook] erro ao salvar creditTransactions item=%s:', localItem.id, err.message, err.stack);
+  }
+
   const savedInv = mapped.investments.length
-    ? await upsertInvestments(pool, localItem.clientId, localItem.id, mapped.investments)
+    ? await upsertInvestments(pool, localItem.clientId, localItem.id, mapped.investments).catch(err => {
+        console.error('[klavi webhook] erro ao salvar investimentos item=%s:', localItem.id, err.message);
+        return 0;
+      })
     : 0;
   const savedDebts = mapped.debts.length
-    ? await upsertDebts(pool, localItem.clientId, localItem.id, mapped.debts)
+    ? await upsertDebts(pool, localItem.clientId, localItem.id, mapped.debts).catch(err => {
+        console.error('[klavi webhook] erro ao salvar dívidas item=%s:', localItem.id, err.message);
+        return 0;
+      })
     : 0;
   await upsertDerivedDebts(pool, localItem.clientId).catch(() => {});
 
@@ -162,8 +208,11 @@ async function persistReport(pool, localItem, payload) {
     return { removedPending: 0, removedInstallments: 0 };
   });
 
+  // Recarrega o item do banco para evitar sobrescrever accountNumbers com dados desatualizados
+  // quando dois webhooks (conta + cartão) chegam simultaneamente.
+  const freshItem = await getItemById(pool, localItem.id).catch(() => localItem);
   const persistedAccountNumbers = mapped.accounts.map(a => a.number).filter(Boolean);
-  const currentAccountNumbers = String(localItem?.accountNumbers || '')
+  const currentAccountNumbers = String(freshItem?.accountNumbers || localItem?.accountNumbers || '')
     .split(',')
     .map(s => s.trim())
     .filter(Boolean);
@@ -174,8 +223,12 @@ async function persistReport(pool, localItem, payload) {
   // Atualiza números de conta para exibição no portal, preservando números já conhecidos.
   // Isso evita que um webhook só de cartão apague o número da conta corrente.
   if (mergedAccountNumbers) {
-    await updateItemStatus(pool, localItem.id, { accountNumbers: mergedAccountNumbers }).catch(() => {});
+    await updateItemStatus(pool, localItem.id, { accountNumbers: mergedAccountNumbers }).catch((err) => {
+      console.error('[klavi webhook] erro ao atualizar accountNumbers item=%s:', localItem.id, err.message);
+    });
   }
+
+  console.log('[klavi webhook] persistReport finalizado item=%s product=%s', localItem.id, productName);
 }
 
 async function updateItemStatusFromPayload(pool, localItem, payload) {
@@ -246,6 +299,7 @@ async function requestReportAfterConsent(pool, localItem) {
         consentIds: localItem.klaviConsentId ? [localItem.klaviConsentId] : [],
         products: DEFAULT_KLAVI_PRODUCTS,
         productsCallbackUrl: process.env.KLAVI_WEBHOOK_URL || null,
+        externalInfo: { transactionPeriod: DEFAULT_KLAVI_TRANSACTION_PERIOD },
       }, logMeta);
     } else if (businessTaxId) {
       console.log('[klavi webhook] solicitando relatório PJ após consent item=%s institution=%s', localItem.id, localItem.institutionCode);
@@ -256,6 +310,7 @@ async function requestReportAfterConsent(pool, localItem) {
         consentIds: localItem.klaviConsentId ? [localItem.klaviConsentId] : [],
         products: DEFAULT_KLAVI_PRODUCTS,
         productsCallbackUrl: process.env.KLAVI_WEBHOOK_URL || null,
+        externalInfo: { transactionPeriod: DEFAULT_KLAVI_TRANSACTION_PERIOD },
       }, logMeta);
     } else {
       console.log('[klavi webhook] CPF/CNPJ não disponível para solicitar relatório item=%s', localItem.id);
@@ -330,6 +385,9 @@ export async function POST(request) {
     const eventLower = String(event || '').toLowerCase();
 
     if (eventLower.includes('consent')) {
+      if (!localItem) {
+        console.warn('[klavi webhook] evento de consentimento sem item local linkId=%s consentId=%s; empresa=%s', linkId, consentId, empresa);
+      }
       if (localItem) {
         // Atualiza instituição se vier no payload de consentimento (fluxo widget-first).
         // Se o item ainda tem um nome placeholder, substitui pelo nome real do banco.

@@ -20,6 +20,7 @@ import {
   X,
   FlaskConical,
 } from 'lucide-react';
+import { resolveDisplayName } from '@/lib/institution-names';
 
 export default function ClientPage({ params }) {
   const { id } = use(params);
@@ -526,12 +527,12 @@ export default function ClientPage({ params }) {
                 return (
                   <div key={group.itemIds.join('-')} className="flex items-center gap-3 px-5 py-3">
                     {group.institutionLogo ? (
-                      <img src={group.institutionLogo} alt={group.institutionName} className="w-8 h-8 rounded-lg object-contain border border-gray-100 p-0.5" />
+                      <img src={group.institutionLogo} alt={resolveDisplayName(group)} className="w-8 h-8 rounded-lg object-contain border border-gray-100 p-0.5" />
                     ) : (
                       <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center"><Building2 className="w-4 h-4 text-blue-600" /></div>
                     )}
                     <span className="flex-1 text-sm font-medium text-gray-900">
-                      {group.institutionName}
+                      {resolveDisplayName(group)}
                       {group.contaNumber && (
                         <span className="ml-2 text-xs font-normal text-gray-400">Conta: {group.contaNumber}</span>
                       )}
@@ -561,7 +562,7 @@ export default function ClientPage({ params }) {
                         <FlaskConical className={`w-4 h-4 ${testingProducts === (group.contaItemId || group.id) ? 'animate-pulse' : ''}`} />
                       </button>
                     )}
-                    <button onClick={() => removeBank(group.contaItemId || group.id, group.institutionName)} disabled={removingId === (group.contaItemId || group.id)} className="text-red-400 hover:text-red-600 p-1.5 rounded-lg hover:bg-red-50 transition-colors">
+                    <button onClick={() => removeBank(group.contaItemId || group.id, resolveDisplayName(group))} disabled={removingId === (group.contaItemId || group.id)} className="text-red-400 hover:text-red-600 p-1.5 rounded-lg hover:bg-red-50 transition-colors">
                       <Trash2 className="w-4 h-4" />
                     </button>
                   </div>
