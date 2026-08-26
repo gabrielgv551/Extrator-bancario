@@ -36,7 +36,7 @@ export async function GET(request, { params }) {
       return d.getUTCHours() !== 0 || d.getUTCMinutes() !== 0 || d.getUTCSeconds() !== 0;
     };
 
-    const header = 'ID,Cliente,Data,Hora,Data/Hora UTC,Data Transação,Descrição,Tipo,Valor (R$),Saldo,Categoria L1,Categoria L2,Categoria L3,Conta,Agência/Número,Tipo de Conta,Banco,Razão Social,CNPJ/CPF,Origem,Status\n';
+    const header = 'ID,Cliente,Data,Hora,Data/Hora UTC,Data Transação,Descrição,Tipo,Valor (R$),Saldo,Categoria L1,Categoria L2,Categoria L3,Conta,Agência/Número,Tipo de Conta,Banco,Razão Social Titular,CNPJ Titular,Razão Social,CNPJ/CPF,Origem,Status\n';
     const rows = transactions
       .map((tx) =>
         [
@@ -61,6 +61,8 @@ export async function GET(request, { params }) {
           `"${(tx.accountNumber || '').replace(/"/g, '""')}"`,
           tx.accountType ?? '',
           `"${(tx.institutionName || '').replace(/"/g, '""')}"`,
+          `"${(tx.companyName || '').replace(/"/g, '""')}"`,
+          fmtDoc(tx.companyCnpj),
           `"${(tx.counterpartyName || '').replace(/"/g, '""')}"`,
           fmtDoc(tx.counterpartyDocument),
           tx.source === 'credit' ? 'Cartão de Crédito' : 'Conta Bancária',

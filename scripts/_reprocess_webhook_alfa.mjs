@@ -34,7 +34,7 @@ const payload = rows[0].payload;
 await pool.end();
 
 const secret = process.env.KLAVI_WEBHOOK_SECRET || process.env.CRON_SECRET;
-const url = 'https://extrator-bancario.vercel.app/api/webhooks/klavi';
+const url = process.env.KLAVI_WEBHOOK_URL || 'https://extrator-bancario.vercel.app/api/webhooks/klavi';
 
 const res = await fetch(url, {
   method: 'POST',

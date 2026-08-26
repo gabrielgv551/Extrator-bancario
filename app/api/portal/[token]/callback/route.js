@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getClientByToken, addKlaviItem, getItemByKlaviLinkId, updateItemStatus } from '@/lib/storage-company';
+import { getClientByToken, addKlaviItem, getItemByKlaviLinkId, getItemByKlaviConsentId, updateItemStatus } from '@/lib/storage-company';
 import { getEmpresaByToken, registerItemLocation } from '@/lib/central-token-map';
 import { getCompanyPool } from '@/lib/company-db';
 import { requestBusinessInstitutionData, requestPersonalInstitutionData, getConsentList, isPlaceholderInstitutionName, resolveInstitutionNameByCode, DEFAULT_KLAVI_PRODUCTS } from '@/lib/klavi';
@@ -97,36 +97,47 @@ export async function GET(request, { params }) {
         const institutionCode = consent.institutionCode || consent.institution_code || null;
         let institutionName = consent.institutionName || consent.institution_name || null;
         // Se a Klavi devolveu o código mas não o nome (caso SICOOB), resolve pelo fallback.
-        if (!institutionName && institutionCode) {
-          institutionName = resolveInstitutionNameByCode(institutionCode);
+        // Também evita ficar preso em nomes genéricos tipo "Banco 6341".
+        if ((!institutionName || isPlaceholderInstitutionName(institutionName)) && institutionCode) {
+          institutionName = resolveInstitutionNameByCode(institutionCode) || institutionName;
         }
         const institutionLogo = consent.institutionLogo || consent.institution_logo || null;
         const foundConsentId = consent.consentId || consent.consentid || resolvedConsentId || null;
-        const updates = {};
-        const shouldUpdateInstitution = isPlaceholderInstitutionName(item.institutionName) ||
-          isPlaceholderInstitutionName(item.institutionCode);
 
-        if (institutionCode && (!item.institutionCode || shouldUpdateInstitution)) updates.institutionCode = institutionCode;
-        if (institutionName && (!item.institutionName || isPlaceholderInstitutionName(item.institutionName))) updates.institutionName = institutionName;
-        if (institutionLogo && (!item.institutionLogo || isPlaceholderInstitutionName(item.institutionName))) updates.institutionLogo = institutionLogo;
-        if (foundConsentId && !item.klaviConsentId) updates.klaviConsentId = foundConsentId;
+        // Tenta localizar item por consentId primeiro; isso cobre o cenário de
+        // múltiplos consentimentos no mesmo link.
+        let consentItem = foundConsentId ? await getItemByKlaviConsentId(pool, foundConsentId) : null;
 
-        if (Object.keys(updates).length > 0) {
-          await updateItemStatus(pool, item.id, updates);
-          item = { ...item, ...updates };
-          console.log('[portal callback] item=%s atualizado com dados do consentimento: %j', item.id, updates);
-        }
+        // Se não achou por consentId, o addKlaviItem decide se atualiza o item
+        // placeholder por linkId ou cria um novo item quando o linkId já tem
+        // outro consentId vinculado.
+        consentItem = await addKlaviItem(pool, {
+          id: consentItem ? consentItem.id : uuidv4(),
+          clientId: client.id,
+          klaviLinkId: linkId,
+          klaviConsentId: foundConsentId,
+          institutionCode,
+          institutionName,
+          institutionLogo,
+          accountNumbers: null,
+          businessTaxId: item.businessTaxId || client.businessTaxId || null,
+          personalTaxId: item.personalTaxId || client.personalTaxId || null,
+          taxType: item.taxType || null,
+          status: 'UPDATING',
+        });
 
-        if (foundConsentId && !resolvedConsentId) {
-          resolvedConsentId = foundConsentId;
-          // Atualiza o mapeamento central com o consentId descoberto, para que webhooks futuros resolvam a empresa.
-          await registerItemLocation(empresa, {
-            itemId: item.id,
-            clientId: client.id,
-            klaviLinkId: linkId,
-            klaviConsentId: foundConsentId,
-          }).catch(err => console.error('[portal callback] falha ao re-registrar item location com consentId:', err.message));
-        }
+        item = consentItem;
+        if (foundConsentId) resolvedConsentId = foundConsentId;
+
+        // Atualiza o mapeamento central com o consentId descoberto, para que webhooks futuros resolvam a empresa.
+        await registerItemLocation(empresa, {
+          itemId: item.id,
+          clientId: client.id,
+          klaviLinkId: linkId,
+          klaviConsentId: foundConsentId,
+        }).catch(err => console.error('[portal callback] falha ao re-registrar item location com consentId:', err.message));
+
+        console.log('[portal callback] item=%s vinculado ao consentimento=%s banco=%s codigo=%s', item.id, foundConsentId, institutionName, institutionCode);
       } else {
         console.log('[portal callback] nenhum consentimento autorizado encontrado para linkId=%s consentId=%s', linkId, resolvedConsentId);
       }

@@ -38,7 +38,7 @@ export default function PortalPage({ params }) {
     if (waitingItems.length === 0) return;
 
     let attempts = 0;
-    const maxAttempts = 24; // 2 minutos
+    const maxAttempts = 60; // 5 minutos
     const interval = setInterval(async () => {
       attempts++;
       let foundAny = false;

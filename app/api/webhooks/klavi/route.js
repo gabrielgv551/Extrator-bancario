@@ -1,11 +1,12 @@
 import { NextResponse } from 'next/server';
 import {
   getItemById, getItemByKlaviLinkId, getItemByKlaviConsentId, getClientById,
-  updateItemStatus, recordWebhookEvent, hasWebhookEvent, recordKlaviWebhookDebug,
+  addKlaviItem, updateItemStatus, recordWebhookEvent, hasWebhookEvent, recordKlaviWebhookDebug,
   upsertTransactionsBatch, upsertCreditTransactionsBatch,
   upsertInvestments, upsertDebts, upsertDerivedDebts,
   softDeleteItem, markItemNotified, deduplicateKlaviTransactions,
 } from '@/lib/storage-company';
+import { v4 as uuidv4 } from 'uuid';
 import { getEmpresaByItem } from '@/lib/central-token-map';
 import { getCompanyPool } from '@/lib/company-db';
 import { mapKlaviReportToLocal, normalizeKlaviStatus, isKlaviConsentAuthorised, isKlaviConsentRejected, isPlaceholderInstitutionName, resolveInstitutionNameByCode, requestBusinessInstitutionData, requestPersonalInstitutionData, DEFAULT_KLAVI_PRODUCTS } from '@/lib/klavi';
@@ -59,8 +60,9 @@ function extractConsentMetadata(payload) {
     consent?.institutionName || consent?.institution_name ||
     payload?.institutionName || payload?.institution_name || null;
   // Se a Klavi mandou o código mas não o nome (comum no SICOOB), resolve pelo fallback.
-  if (!institutionName && institutionCode) {
-    institutionName = resolveInstitutionNameByCode(institutionCode);
+  // Também evita ficar preso em nomes genéricos tipo "Banco 6341".
+  if ((!institutionName || isPlaceholderInstitutionName(institutionName)) && institutionCode) {
+    institutionName = resolveInstitutionNameByCode(institutionCode) || institutionName;
   }
   const institutionLogo =
     institution?.logo || institution?.institutionLogo ||
@@ -231,15 +233,46 @@ async function persistReport(pool, localItem, payload) {
   console.log('[klavi webhook] persistReport finalizado item=%s product=%s', localItem.id, productName);
 }
 
+function payloadHasData(payload) {
+  const report = payload?.report || payload?.data || payload;
+  if (!report) return false;
+  return !!(
+    report.checkingAccounts?.length ||
+    report.savingsAccounts?.length ||
+    report.accounts?.length ||
+    report.paymentAccounts?.length ||
+    report.creditCardAccounts?.length ||
+    report.creditCards?.length
+  );
+}
+
 async function updateItemStatusFromPayload(pool, localItem, payload) {
   const { event, report } = extractReportMetadata(payload);
   const consentStatus = payload?.consentStatus || payload?.status || payload?.consent_status || null;
   const norm = normalizeKlaviStatus(report, consentStatus);
+  const currentStatus = localItem?.status;
   const updates = buildItemStatusUpdates(null);
 
+  // Se o item já chegou a UPDATED com dados anteriores, não deixamos um
+  // webhook posterior de erro (ex: cartão de crédito indisponível) reverter
+  // o status para ERROR. Mantemos UPDATED e registramos o erro apenas se
+  // houver dados no payload atual.
+  if (currentStatus === 'UPDATED' && norm.status === 'ERROR' && !payloadHasData(payload)) {
+    console.log('[klavi webhook] item=%s já UPDATED; ignorando webhook de erro sem dados para não reverter status', localItem.id);
+    updates.lastUpdatedAt = new Date().toISOString();
+    await updateItemStatus(pool, localItem.id, updates);
+    return;
+  }
+
   updates.status = norm.status;
-  if (norm.errorCode) updates.errorCode = norm.errorCode;
-  if (norm.errorMessage) updates.errorMessage = norm.errorMessage;
+  if (norm.status === 'UPDATED') {
+    // Limpa erros antigos quando o item fica saudável.
+    updates.errorCode = null;
+    updates.errorMessage = null;
+  } else if (norm.errorCode) {
+    updates.errorCode = norm.errorCode;
+    updates.errorMessage = norm.errorMessage;
+  }
   if (isKlaviConsentRejected(consentStatus) || norm.status === 'LOGIN_ERROR') {
     updates.requiresReconnect = true;
     updates.lastErrorAt = new Date().toISOString();
@@ -385,46 +418,84 @@ export async function POST(request) {
     const eventLower = String(event || '').toLowerCase();
 
     if (eventLower.includes('consent')) {
-      if (!localItem) {
+      const { institutionCode, institutionName, institutionLogo } = extractConsentMetadata(payload);
+      const payloadConsentId = payload?.consentId || payload?.consent_id || payload?.consent?.consentId || payload?.consent?.consentid || consentId || null;
+
+      // Um link pode gerar múltiplos consentimentos. Se o webhook chegou com um
+      // consentId que ainda não tem item próprio, precisamos criar um novo item
+      // em vez de sobrescrever o item do primeiro consentimento do mesmo link.
+      let consentItem = localItem;
+      if (payloadConsentId && localItem && String(localItem.klaviConsentId || '').toLowerCase() !== String(payloadConsentId).toLowerCase()) {
+        const byConsent = await getItemByKlaviConsentId(pool, payloadConsentId);
+        if (byConsent) {
+          consentItem = byConsent;
+        } else if (linkId) {
+          // Cria um novo item para este consentimento, reaproveitando os dados
+          // fiscais do item existente do mesmo link.
+          try {
+            const client = await getClientById(pool, localItem.clientId).catch(() => null);
+            consentItem = await addKlaviItem(pool, {
+              id: uuidv4(),
+              clientId: localItem.clientId,
+              klaviLinkId: linkId,
+              klaviConsentId: payloadConsentId,
+              institutionCode,
+              institutionName,
+              institutionLogo,
+              accountNumbers: null,
+              businessTaxId: localItem.businessTaxId || client?.businessTaxId || null,
+              personalTaxId: localItem.personalTaxId || client?.personalTaxId || null,
+              taxType: localItem.taxType || null,
+              status: 'WAITING_DATA',
+            });
+            console.log('[klavi webhook] novo item=%s criado para consentimento=%s linkId=%s', consentItem.id, payloadConsentId, linkId);
+          } catch (createErr) {
+            console.error('[klavi webhook] erro ao criar item para consentimento=%s:', payloadConsentId, createErr.message);
+            consentItem = localItem;
+          }
+        }
+      }
+
+      if (!consentItem) {
         console.warn('[klavi webhook] evento de consentimento sem item local linkId=%s consentId=%s; empresa=%s', linkId, consentId, empresa);
       }
-      if (localItem) {
+
+      if (consentItem) {
         // Atualiza instituição se vier no payload de consentimento (fluxo widget-first).
         // Se o item ainda tem um nome placeholder, substitui pelo nome real do banco.
-        const { institutionCode, institutionName, institutionLogo } = extractConsentMetadata(payload);
         if (institutionCode || institutionName || institutionLogo) {
           const updates = {};
-          const shouldUpdateInstitution = isPlaceholderInstitutionName(localItem.institutionName) ||
-            isPlaceholderInstitutionName(localItem.institutionCode);
-          if (institutionCode && (!localItem.institutionCode || shouldUpdateInstitution)) {
+          const shouldUpdateInstitution = isPlaceholderInstitutionName(consentItem.institutionName) ||
+            isPlaceholderInstitutionName(consentItem.institutionCode);
+          if (institutionCode && (!consentItem.institutionCode || shouldUpdateInstitution)) {
             updates.institutionCode = institutionCode;
           }
-          if (institutionName && (!localItem.institutionName || isPlaceholderInstitutionName(localItem.institutionName))) {
+          if (institutionName && (!consentItem.institutionName || isPlaceholderInstitutionName(consentItem.institutionName))) {
             updates.institutionName = institutionName;
           }
-          if (institutionLogo && (!localItem.institutionLogo || isPlaceholderInstitutionName(localItem.institutionName))) {
+          if (institutionLogo && (!consentItem.institutionLogo || isPlaceholderInstitutionName(consentItem.institutionName))) {
             updates.institutionLogo = institutionLogo;
           }
           if (Object.keys(updates).length > 0) {
-            await updateItemStatus(pool, localItem.id, updates);
-            console.log('[klavi webhook] item=%s atualizado com instituição: %j', localItem.id, updates);
+            await updateItemStatus(pool, consentItem.id, updates);
+            console.log('[klavi webhook] item=%s atualizado com instituição: %j', consentItem.id, updates);
           }
         }
 
-        await updateItemStatusFromPayload(pool, localItem, payload);
+        await updateItemStatusFromPayload(pool, consentItem, payload);
         if (isKlaviConsentAuthorised(payload?.consentStatus || payload?.status)) {
           // Consentimento autorizado: solicitação de relatório já deve ter sido feita no callback.
           // Se o webhook vier com dados completos, persistimos.
           if (payload?.report || payload?.checkingAccounts || payload?.creditCardAccounts) {
-            scheduleAsync(persistReport(pool, localItem, payload), `persistReport ${localItem.id}`);
+            scheduleAsync(persistReport(pool, consentItem, payload), `persistReport ${consentItem.id}`);
           } else {
             // Evita itens presos em UPDATING quando o callback não conseguiu solicitar
             // (ex: institutionCode ainda não disponível na hora do redirect).
-            scheduleAsync(requestReportAfterConsent(pool, localItem), `requestReportAfterConsent ${localItem.id}`);
+            scheduleAsync(requestReportAfterConsent(pool, consentItem), `requestReportAfterConsent ${consentItem.id}`);
           }
         }
         if (isKlaviConsentRejected(payload?.consentStatus || payload?.status)) {
-          await updateItemStatus(pool, localItem.id, { requiresReconnect: true });
+          await updateItemStatus(pool, consentItem.id, { requiresReconnect: true });
         }
       }
     } else if (eventLower.includes('report') || payload?.productName || payload?.report) {
