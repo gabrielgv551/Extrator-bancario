@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, use } from 'react';
+import { useState, useEffect, useCallback, useMemo, use } from 'react';
 import Link from 'next/link';
 import {
   ChevronLeft,
@@ -12,8 +12,10 @@ import {
   Loader2,
   Settings,
   X,
+  ListTree,
   Sparkles,
   Wand2,
+  CalendarDays,
 } from 'lucide-react';
 import { CLASSIFICACOES } from '@/lib/classification';
 
@@ -33,12 +35,16 @@ export default function ClassificarPage({ params }) {
   const [showConfig, setShowConfig] = useState(false);
   const [configDate, setConfigDate] = useState('');
   const [savingConfig, setSavingConfig] = useState(false);
+  // Plano de contas do cliente (grupo -> contas). Fallback: lista estática.
+  const [gruposContas, setGruposContas] = useState(CLASSIFICACOES);
   // Sugestões do motor de pré-classificação: { [txId]: { l1, l2, confianca, origem } | null }
   const [sugestoes, setSugestoes] = useState({});
   const [loadingSugestoes, setLoadingSugestoes] = useState(false);
   const today = new Date().toISOString().split('T')[0];
   const [fromDate, setFromDate] = useState('2026-01-01');
   const [toDate, setToDate] = useState(today);
+  // Mês selecionado via chips rápidos ('2026-09'); null = período customizado
+  const [mesSelecionado, setMesSelecionado] = useState(null);
 
   const formatDate = (iso) =>
     new Date(iso).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
@@ -59,6 +65,22 @@ export default function ClassificarPage({ params }) {
     fetchClient();
   }, [fetchClient]);
 
+  useEffect(() => {
+    fetch(`/api/clients/${id}/plano-contas`)
+      .then(async (res) => {
+        if (!res.ok) throw new Error('plano indisponível');
+        const data = await res.json();
+        const map = {};
+        for (const grupo of data.plano.filter((p) => !p.parentId && p.ativo)) {
+          map[grupo.nome] = data.plano
+            .filter((p) => p.parentId === grupo.id && p.ativo)
+            .map((p) => p.nome);
+        }
+        setGruposContas(map);
+      })
+      .catch(() => setGruposContas(CLASSIFICACOES));
+  }, [id]);
+
   const loadSugestoes = async (from, to) => {
     setLoadingSugestoes(true);
     try {
@@ -71,15 +93,15 @@ export default function ClassificarPage({ params }) {
     setLoadingSugestoes(false);
   };
 
-  const fetchTransactions = async () => {
+  const fetchTransactions = async (from = fromDate, to = toDate) => {
     setSyncing(true);
     setError('');
     try {
-      const res = await fetch(`/api/clients/${id}/transactions?from=${fromDate}&to=${toDate}`);
+      const res = await fetch(`/api/clients/${id}/transactions?from=${from}&to=${to}`);
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
       setTransactions(data.transactions);
-      loadSugestoes(fromDate, toDate);
+      loadSugestoes(from, to);
     } catch (e) {
       setError(e.message);
     }
@@ -120,7 +142,7 @@ export default function ClassificarPage({ params }) {
     const sug = sugestoes[tx.id];
     if (!sug) return false;
     if (tx.classificacaoL1 === sug.l1 && tx.classificacaoL2 === sug.l2) return false;
-    return (CLASSIFICACOES[sug.l1] || []).includes(sug.l2);
+    return (gruposContas[sug.l1] || []).includes(sug.l2);
   };
 
   const applyAllSuggestions = async () => {
@@ -145,9 +167,11 @@ export default function ClassificarPage({ params }) {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
       setClient(data);
-      setFromDate(data.classificarDe ? String(data.classificarDe).slice(0, 10) : '2026-01-01');
+      const novoInicio = data.classificarDe ? String(data.classificarDe).slice(0, 10) : '2026-01-01';
+      setMesSelecionado(null);
+      setFromDate(novoInicio);
       setShowConfig(false);
-      fetchTransactions();
+      fetchTransactions(novoInicio, today);
     } catch (e) {
       setError(e.message);
     }
@@ -155,6 +179,48 @@ export default function ClassificarPage({ params }) {
   };
 
   const classificarDe = client?.classificarDe ? String(client.classificarDe).slice(0, 10) : null;
+
+  // Meses disponíveis para classificação (de classificarDe até hoje, mais recente primeiro)
+  const MESES_ABREV = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+  const meses = useMemo(() => {
+    const lista = [];
+    const base = new Date(`${classificarDe || '2026-01-01'}T00:00:00`);
+    const fim = new Date(`${today}T00:00:00`);
+    let ano = fim.getFullYear();
+    let mes = fim.getMonth();
+    while (ano > base.getFullYear() || (ano === base.getFullYear() && mes >= base.getMonth())) {
+      const mm = String(mes + 1).padStart(2, '0');
+      const ultimo = new Date(ano, mes + 1, 0);
+      const ultimoStr = `${ano}-${mm}-${String(ultimo.getDate()).padStart(2, '0')}`;
+      lista.push({
+        key: `${ano}-${mm}`,
+        label: `${MESES_ABREV[mes]}/${ano}`,
+        start: `${ano}-${mm}-01`,
+        end: ultimoStr < today ? ultimoStr : today,
+      });
+      mes--;
+      if (mes < 0) {
+        mes = 11;
+        ano--;
+      }
+    }
+    return lista;
+  }, [classificarDe, today]);
+
+  const selecionarMes = (mes) => {
+    setMesSelecionado(mes.key);
+    setFromDate(mes.start);
+    setToDate(mes.end);
+    fetchTransactions(mes.start, mes.end);
+  };
+
+  const selecionarPeriodoTodo = () => {
+    const inicio = classificarDe || '2026-01-01';
+    setMesSelecionado(null);
+    setFromDate(inicio);
+    setToDate(today);
+    fetchTransactions(inicio, today);
+  };
 
   const filtered = transactions.filter((tx) => {
     if (classificarDe && (tx.date || '').slice(0, 10) < classificarDe) return false;
@@ -192,7 +258,7 @@ export default function ClassificarPage({ params }) {
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
       <header className="bg-white border-b border-gray-200 sticky top-0 z-10">
-        <div className="max-w-6xl mx-auto px-6 py-4 flex items-center gap-4">
+        <div className="max-w-full mx-auto px-6 py-4 flex items-center gap-4">
           <Link href="/" className="text-gray-400 hover:text-gray-700 transition-colors">
             <ChevronLeft className="w-5 h-5" />
           </Link>
@@ -221,6 +287,13 @@ export default function ClassificarPage({ params }) {
             Regras
           </Link>
           <Link
+            href={`/clients/${id}/plano-contas`}
+            className="inline-flex items-center gap-1.5 text-gray-600 border border-gray-300 hover:bg-gray-50 px-3 py-2 rounded-lg text-xs font-medium transition-colors"
+          >
+            <ListTree className="w-3.5 h-3.5" />
+            Plano de Contas
+          </Link>
+          <Link
             href={`/clients/${id}`}
             className="inline-flex items-center gap-1.5 text-blue-600 border border-blue-200 bg-blue-50 hover:bg-blue-100 px-3 py-2 rounded-lg text-xs font-medium transition-colors"
           >
@@ -230,7 +303,7 @@ export default function ClassificarPage({ params }) {
         </div>
       </header>
 
-      <main className="max-w-6xl mx-auto px-6 py-8 space-y-6">
+      <main className="max-w-full mx-auto px-6 py-8 space-y-6">
         {error && (
           <div className="flex items-start gap-3 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">
             <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
@@ -248,7 +321,7 @@ export default function ClassificarPage({ params }) {
                 type="date"
                 value={fromDate}
                 min={classificarDe || undefined}
-                onChange={(e) => setFromDate(e.target.value)}
+                onChange={(e) => { setMesSelecionado(null); setFromDate(e.target.value); }}
                 className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
@@ -257,7 +330,7 @@ export default function ClassificarPage({ params }) {
               <input
                 type="date"
                 value={toDate}
-                onChange={(e) => setToDate(e.target.value)}
+                onChange={(e) => { setMesSelecionado(null); setToDate(e.target.value); }}
                 className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
@@ -296,6 +369,35 @@ export default function ClassificarPage({ params }) {
               />
               Só não classificadas
             </label>
+          </div>
+          <div className="flex flex-wrap items-center gap-2 mt-4 pt-4 border-t border-gray-100">
+            <span className="inline-flex items-center gap-1.5 text-xs font-medium text-gray-500 mr-1">
+              <CalendarDays className="w-3.5 h-3.5" />
+              Classificar por mês:
+            </span>
+            <button
+              onClick={selecionarPeriodoTodo}
+              className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
+                mesSelecionado === null
+                  ? 'bg-violet-600 text-white border-violet-600'
+                  : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'
+              }`}
+            >
+              Período todo
+            </button>
+            {meses.map((mes) => (
+              <button
+                key={mes.key}
+                onClick={() => selecionarMes(mes)}
+                className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
+                  mesSelecionado === mes.key
+                    ? 'bg-violet-600 text-white border-violet-600'
+                    : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'
+                }`}
+              >
+                {mes.label}
+              </button>
+            ))}
           </div>
         </div>
 
@@ -347,7 +449,7 @@ export default function ClassificarPage({ params }) {
                 <tbody>
                   {filtered.map((tx) => {
                     const sug = sugestoes[tx.id];
-                    const sugValida = sug && (CLASSIFICACOES[sug.l1] || []).includes(sug.l2);
+                    const sugValida = sug && (gruposContas[sug.l1] || []).includes(sug.l2);
                     const jaAplicada = sugValida && tx.classificacaoL1 === sug.l1 && tx.classificacaoL2 === sug.l2;
                     return (
                       <tr
@@ -357,7 +459,7 @@ export default function ClassificarPage({ params }) {
                         <td className="px-4 py-2.5 text-gray-500 whitespace-nowrap text-xs">
                           {formatDate(tx.date)}
                         </td>
-                        <td className="px-4 py-2.5 text-gray-900 max-w-xs">
+                        <td className="px-4 py-2.5 text-gray-900 max-w-md">
                           <span className="block truncate" title={tx.description}>
                             {tx.description}
                           </span>
@@ -428,7 +530,7 @@ export default function ClassificarPage({ params }) {
                               className="border border-gray-300 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-violet-500 bg-white"
                             >
                               <option value="">—</option>
-                              {Object.keys(CLASSIFICACOES).map((grupo) => (
+                              {Object.keys(gruposContas).map((grupo) => (
                                 <option key={grupo} value={grupo}>
                                   {grupo}
                                 </option>
@@ -444,7 +546,7 @@ export default function ClassificarPage({ params }) {
                               className="border border-gray-300 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-violet-500 bg-white disabled:opacity-50"
                             >
                               <option value="">—</option>
-                              {(CLASSIFICACOES[tx.classificacaoL1] || []).map((cat) => (
+                              {(gruposContas[tx.classificacaoL1] || []).map((cat) => (
                                 <option key={cat} value={cat}>
                                   {cat}
                                 </option>
