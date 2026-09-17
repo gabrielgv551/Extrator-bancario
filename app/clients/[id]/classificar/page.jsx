@@ -10,6 +10,8 @@ import {
   Tags,
   Check,
   Loader2,
+  Settings,
+  X,
 } from 'lucide-react';
 import { CLASSIFICACOES } from '@/lib/classification';
 
@@ -26,6 +28,9 @@ export default function ClassificarPage({ params }) {
   const [typeFilter, setTypeFilter] = useState('all'); // all | CREDIT | DEBIT
   const [savingId, setSavingId] = useState(null);
   const [savedId, setSavedId] = useState(null);
+  const [showConfig, setShowConfig] = useState(false);
+  const [configDate, setConfigDate] = useState('');
+  const [savingConfig, setSavingConfig] = useState(false);
   const today = new Date().toISOString().split('T')[0];
   const [fromDate, setFromDate] = useState('2026-01-01');
   const [toDate, setToDate] = useState(today);
@@ -38,7 +43,11 @@ export default function ClassificarPage({ params }) {
 
   const fetchClient = useCallback(async () => {
     const res = await fetch(`/api/clients/${id}`);
-    if (res.ok) setClient(await res.json());
+    if (res.ok) {
+      const data = await res.json();
+      setClient(data);
+      if (data.classificarDe) setFromDate(String(data.classificarDe).slice(0, 10));
+    }
   }, [id]);
 
   useEffect(() => {
@@ -89,7 +98,31 @@ export default function ClassificarPage({ params }) {
     setSavingId(null);
   };
 
+  const saveConfig = async () => {
+    setSavingConfig(true);
+    setError('');
+    try {
+      const res = await fetch(`/api/clients/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ classificarDe: configDate || null }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      setClient(data);
+      setFromDate(data.classificarDe ? String(data.classificarDe).slice(0, 10) : '2026-01-01');
+      setShowConfig(false);
+      fetchTransactions();
+    } catch (e) {
+      setError(e.message);
+    }
+    setSavingConfig(false);
+  };
+
+  const classificarDe = client?.classificarDe ? String(client.classificarDe).slice(0, 10) : null;
+
   const filtered = transactions.filter((tx) => {
+    if (classificarDe && (tx.date || '').slice(0, 10) < classificarDe) return false;
     if (typeFilter !== 'all' && tx.type !== typeFilter) return false;
     if (onlyUnclassified && (tx.classificacaoL1 || tx.classificacaoL2)) return false;
     if (search && !(tx.description || '').toLowerCase().includes(search.toLowerCase())) return false;
@@ -136,6 +169,14 @@ export default function ClassificarPage({ params }) {
               Classifique as receitas e despesas do cliente
             </p>
           </div>
+          <button
+            onClick={() => { setConfigDate(classificarDe || ''); setShowConfig(true); }}
+            className="inline-flex items-center gap-1.5 text-gray-600 border border-gray-300 hover:bg-gray-50 px-3 py-2 rounded-lg text-xs font-medium transition-colors"
+            title="Configurar data inicial da classificação"
+          >
+            <Settings className="w-3.5 h-3.5" />
+            Configurar
+          </button>
           <Link
             href={`/clients/${id}`}
             className="inline-flex items-center gap-1.5 text-blue-600 border border-blue-200 bg-blue-50 hover:bg-blue-100 px-3 py-2 rounded-lg text-xs font-medium transition-colors"
@@ -163,6 +204,7 @@ export default function ClassificarPage({ params }) {
               <input
                 type="date"
                 value={fromDate}
+                min={classificarDe || undefined}
                 onChange={(e) => setFromDate(e.target.value)}
                 className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
@@ -343,6 +385,55 @@ export default function ClassificarPage({ params }) {
           </div>
         )}
       </main>
+
+      {/* Modal: Configurar data inicial */}
+      {showConfig && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl">
+            <div className="flex items-center justify-between mb-5">
+              <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2">
+                <Settings className="w-4 h-4 text-gray-500" />
+                Configuração
+              </h2>
+              <button
+                onClick={() => setShowConfig(false)}
+                className="text-gray-400 hover:text-gray-600 transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Classificar a partir de
+            </label>
+            <input
+              type="date"
+              value={configDate}
+              onChange={(e) => setConfigDate(e.target.value)}
+              className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500 mb-2"
+            />
+            <p className="text-xs text-gray-400 mb-5">
+              Só serão exibidas para classificação as transações a partir desta data.
+              Deixe em branco para não ter limite.
+            </p>
+            <div className="flex gap-2 justify-end">
+              <button
+                onClick={() => setShowConfig(false)}
+                className="px-4 py-2 text-sm text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={saveConfig}
+                disabled={savingConfig}
+                className="flex items-center gap-2 px-4 py-2 text-sm bg-violet-600 text-white rounded-lg hover:bg-violet-700 disabled:opacity-50 transition-colors"
+              >
+                {savingConfig && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                {savingConfig ? 'Salvando...' : 'Salvar'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

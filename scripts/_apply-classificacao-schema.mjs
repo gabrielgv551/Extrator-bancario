@@ -60,6 +60,7 @@ async function applyToCompany(slug) {
       await db.query(`ALTER TABLE ${t} ADD COLUMN IF NOT EXISTS classificacao_l1 VARCHAR(100)`);
       await db.query(`ALTER TABLE ${t} ADD COLUMN IF NOT EXISTS classificacao_l2 VARCHAR(100)`);
     }
+    await db.query('ALTER TABLE extrator_clients ADD COLUMN IF NOT EXISTS classificar_de DATE');
     await db.query('DROP VIEW IF EXISTS extrator_all_transactions CASCADE');
     await db.query(VIEW_SQL);
     console.log(`✅ ${slug} (${cfg.database})`);
