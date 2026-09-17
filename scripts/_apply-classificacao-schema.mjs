@@ -1,14 +1,22 @@
 #!/usr/bin/env node
 /**
- * Aplica SOMENTE o schema de classificação manual (classificacao_l1/l2)
- * nos bancos de todas as empresas ativas, sem rodar o setup completo.
+ * Cria as tabelas caixa_* (motor de pré-classificação) em todos os bancos de
+ * empresas ativas + banco principal (extratos), sem rodar o setup completo.
+ * O seed do catálogo de categorias acontece em runtime (lib/regras-classificacao.js).
  *
- * Uso: node scripts/_apply-classificacao-schema.mjs
+ * Variáveis de ambiente necessárias:
+ *   CENTRAL_DB_HOST / POSTGRES_HOST
+ *   CENTRAL_DB_PASSWORD / POSTGRES_PASSWORD
+ *   CENTRAL_DB_NAME (padrão: have_gestor)
+ *   DATABASE_URL (banco principal, opcional)
  */
 
 import { readFileSync } from 'fs';
 import pg from 'pg';
-import { listActiveCompanies, getCompanyDbConfig } from '../lib/company-db.js';
+import { listActiveCompanies, getCompanyDbConfig, getCentralConfig } from '../lib/company-db.js';
+import { garantirSchema } from '../lib/regras-classificacao.js';
+
+const { Client } = pg;
 
 for (const file of ['.env.local', '.env']) {
   try {
@@ -24,59 +32,51 @@ for (const file of ['.env.local', '.env']) {
   }
 }
 
-const { Client } = pg;
-
-const VIEW_SQL = `
-  CREATE VIEW extrator_all_transactions AS
-  SELECT
-    t.id, t.client_id, c.name AS client_name, t.pluggy_item_id, t.date, t.description, t.type,
-    t.amount, t.balance, t.category, t.category_l1, t.category_l2, t.category_l3,
-    t.classificacao_l1, t.classificacao_l2,
-    t.account_name, t.account_number, t.account_type, t.institution_name,
-    t.counterparty_name AS razao_social, t.counterparty_document,
-    t.company_name, t.company_cnpj,
-    t.status, t.date_transacted, t.api_order, t.synced_at, 'bank' AS source
-  FROM extrator_transactions t
-  LEFT JOIN extrator_clients c ON c.id = t.client_id
-  UNION ALL
-  SELECT
-    ct.id, ct.client_id, c.name AS client_name, ct.pluggy_item_id, ct.date, ct.description, ct.type,
-    ct.amount, ct.balance, ct.category, ct.category_l1, ct.category_l2, ct.category_l3,
-    ct.classificacao_l1, ct.classificacao_l2,
-    ct.account_name, ct.account_number, ct.account_type, ct.institution_name,
-    ct.counterparty_name AS razao_social, ct.counterparty_document,
-    ct.company_name, ct.company_cnpj,
-    ct.status, ct.date_transacted, ct.api_order, ct.synced_at, 'credit' AS source
-  FROM extrator_credit_transactions ct
-  LEFT JOIN extrator_clients c ON c.id = ct.client_id
-`;
-
-async function applyToCompany(slug) {
-  const cfg = await getCompanyDbConfig(slug);
-  const db = new Client({ ...cfg, connectionTimeoutMillis: 10000 });
+async function applyOnDatabase(config, database, empresa) {
+  const db = new Client({ ...config, database });
+  await db.connect();
   try {
-    await db.connect();
-    for (const t of ['extrator_transactions', 'extrator_credit_transactions']) {
-      await db.query(`ALTER TABLE ${t} ADD COLUMN IF NOT EXISTS classificacao_l1 VARCHAR(100)`);
-      await db.query(`ALTER TABLE ${t} ADD COLUMN IF NOT EXISTS classificacao_l2 VARCHAR(100)`);
-    }
-    await db.query('ALTER TABLE extrator_clients ADD COLUMN IF NOT EXISTS classificar_de DATE');
-    await db.query('DROP VIEW IF EXISTS extrator_all_transactions CASCADE');
-    await db.query(VIEW_SQL);
-    console.log(`✅ ${slug} (${cfg.database})`);
+    await garantirSchema(db, empresa);
   } finally {
-    await db.end().catch(() => {});
+    await db.end();
   }
 }
 
 async function main() {
   const companies = await listActiveCompanies();
-  console.log(`Aplicando schema de classificação em ${companies.length} empresa(s)...\n`);
+  console.log(`Aplicando schema caixa_* em ${companies.length} empresas + banco principal...\n`);
+
   for (const { slug, name } of companies) {
     try {
-      await applyToCompany(slug);
+      const cfg = await getCompanyDbConfig(slug);
+      await applyOnDatabase(cfg, cfg.database, slug);
+      console.log(`✅ ${slug} (${name || slug}) -> ${cfg.database}`);
     } catch (err) {
       console.error(`❌ ${slug} (${name || slug}): ${err.message}`);
+    }
+  }
+
+  // Banco principal (single-tenant legado): usa empresa 'default'.
+  const dbUrl = process.env.DATABASE_URL;
+  if (dbUrl) {
+    try {
+      const mainCfg = typeof getCentralConfig === 'function' ? getCentralConfig() : null;
+      const parsed = new URL(dbUrl);
+      const mainDbName = decodeURIComponent(parsed.pathname.replace(/^\//, ''));
+      await applyOnDatabase(
+        {
+          host: parsed.hostname,
+          port: Number(parsed.port || 5432),
+          user: decodeURIComponent(parsed.username || 'postgres'),
+          password: decodeURIComponent(parsed.password || ''),
+          ...(mainCfg?.ssl ? { ssl: mainCfg.ssl } : {}),
+        },
+        mainDbName,
+        'default'
+      );
+      console.log(`✅ principal -> ${mainDbName}`);
+    } catch (err) {
+      console.error(`❌ principal: ${err.message}`);
     }
   }
 }

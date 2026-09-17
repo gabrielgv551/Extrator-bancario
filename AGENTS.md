@@ -24,7 +24,8 @@ app/
   page.jsx                          → Dashboard administrativo (lista de clientes)
   login/page.jsx                    → Tela de login do admin
   clients/[id]/page.jsx             → Extrato detalhado do cliente (admin)
-  clients/[id]/classificar/page.jsx → Classificação manual de receitas/despesas do cliente (admin)
+  clients/[id]/classificar/page.jsx → Classificação manual de receitas/despesas do cliente (admin), com sugestões do motor de pré-classificação
+  clients/[id]/regras/page.jsx     → CRUD de regras de pré-classificação que alimentam as sugestões (admin)
   portal/[token]/page.jsx           → Portal público do cliente (conectar bancos)
   layout.jsx                        → Root layout (lang="pt-BR")
   not-found.jsx                     → Página 404
@@ -36,6 +37,8 @@ app/
     clients/[id]/route.js           → GET/PUT/DELETE de cliente
     clients/[id]/transactions/route.js   → Busca e persiste transações via Pluggy
     clients/[id]/transactions/[txId]/route.js → Atualiza classificação manual (Receita/Despesa) de uma transação
+    clients/[id]/sugestoes/route.js   → Sugestões de classificação do motor para as transações do cliente
+    regras-classificacao/route.js     → CRUD de regras de pré-classificação da empresa (aplicacao='extrato')
     clients/[id]/export/route.js    → Exporta extrato para CSV
     clients/[id]/export-json/route.js    → Exporta extrato para JSON (protegido por CRON_SECRET)
     clients/[id]/loans/route.js     → Lista empréstimos e parcelas do cliente
@@ -57,6 +60,8 @@ lib/
   pluggy.js                         → Wrapper da API Pluggy (auth, contas, transações, investimentos, dívidas)
   storage.js                        → Camada de persistência PostgreSQL (clients, items, transactions, investments, debts, sync_logs, sync_locks)
   classification.js                 → Lista pré-definida de classificação manual (Receita/Despesa) usada na página de classificação
+  motor-classificacao.js            → Motor de pré-classificação copiado do Have_SOP (regras caixa_regras_classificacao + fallbacks; CommonJS, zero deps)
+  regras-classificacao.js           → Wrapper ESM do motor: garante schema caixa_*, semeia caixa_categorias, traduz o vocabulário do motor para CLASSIFICACOES e expõe CRUD de regras/sugestões
 
 scripts/
   setup-db.mjs                      → Cria banco e tabelas PostgreSQL
@@ -169,6 +174,13 @@ O banco `extratos` roda em PostgreSQL. O script `scripts/setup-db.mjs` cria/atua
 - PATCH em itens é serializado e respeita `lastUpdatedAt` (mínimo 1h entre updates, conforme Pluggy).
 - Status, `executionStatus`, `error.code` e `lastUpdatedAt` dos itens são persistidos na tabela `items`.
 - Itens com `LOGIN_ERROR`/`INVALID_CREDENTIALS`/`USER_AUTHORIZATION_REVOKED` são marcados com `requires_reconnect = true` e exibem alerta no dashboard e portal.
+
+### Pré-classificação (motor de sugestões)
+- O motor (`lib/motor-classificacao.js`, copiado do Have_SOP) calcula sugestões a partir das regras da empresa em `caixa_regras_classificacao` (aplicacao='extrato'), com fallbacks por contraparte e padrões embutidos; sem correspondência retorna `NÃO CLASSIFICADO`.
+- `lib/regras-classificacao.js` garante as tabelas `caixa_regras_classificacao`, `caixa_extrato_classificacoes` e `caixa_categorias` no banco da empresa e semeia o catálogo com as contas de `lib/classification.js`.
+- O vocabulário do motor é traduzido para o plano do Extrator (`mapearCategoria`): regras gravam `categoria_sugerida` no formato "Grupo > Conta"; aliases cobrem os termos nativos do motor (TAXAS E JUROS, RECEBIMENTOS, BOLETO etc.).
+- A página de classificar exibe a sugestão em chip (com confiança e origem) e aplica via PATCH de classificação manual existente; o botão "Aplicar sugestões" aplica todas as pendentes do filtro atual.
+- Sugestões nunca gravam nada sozinhas: só viram classificação quando o usuário clica em Aplicar.
 
 ### Cron de Sincronização
 - Configurado no `vercel.json` para rodar diariamente às 12:00 (UTC-3 / horário de Brasília) no path `/api/cron/sync`.

@@ -12,6 +12,8 @@ import {
   Loader2,
   Settings,
   X,
+  Sparkles,
+  Wand2,
 } from 'lucide-react';
 import { CLASSIFICACOES } from '@/lib/classification';
 
@@ -31,6 +33,9 @@ export default function ClassificarPage({ params }) {
   const [showConfig, setShowConfig] = useState(false);
   const [configDate, setConfigDate] = useState('');
   const [savingConfig, setSavingConfig] = useState(false);
+  // Sugestões do motor de pré-classificação: { [txId]: { l1, l2, confianca, origem } | null }
+  const [sugestoes, setSugestoes] = useState({});
+  const [loadingSugestoes, setLoadingSugestoes] = useState(false);
   const today = new Date().toISOString().split('T')[0];
   const [fromDate, setFromDate] = useState('2026-01-01');
   const [toDate, setToDate] = useState(today);
@@ -54,6 +59,18 @@ export default function ClassificarPage({ params }) {
     fetchClient();
   }, [fetchClient]);
 
+  const loadSugestoes = async (from, to) => {
+    setLoadingSugestoes(true);
+    try {
+      const res = await fetch(`/api/clients/${id}/sugestoes?from=${from}&to=${to}`);
+      const data = await res.json();
+      if (res.ok) setSugestoes(data.sugestoes || {});
+    } catch {
+      // sugestões são opcionais; falha silenciosa
+    }
+    setLoadingSugestoes(false);
+  };
+
   const fetchTransactions = async () => {
     setSyncing(true);
     setError('');
@@ -62,6 +79,7 @@ export default function ClassificarPage({ params }) {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
       setTransactions(data.transactions);
+      loadSugestoes(fromDate, toDate);
     } catch (e) {
       setError(e.message);
     }
@@ -98,6 +116,23 @@ export default function ClassificarPage({ params }) {
     setSavingId(null);
   };
 
+  const sugerePendente = (tx) => {
+    const sug = sugestoes[tx.id];
+    if (!sug) return false;
+    if (tx.classificacaoL1 === sug.l1 && tx.classificacaoL2 === sug.l2) return false;
+    return (CLASSIFICACOES[sug.l1] || []).includes(sug.l2);
+  };
+
+  const applyAllSuggestions = async () => {
+    const pendentes = filtered.filter(sugerePendente);
+    if (!pendentes.length) return;
+    if (!confirm(`Aplicar a sugestão em ${pendentes.length} lançamento(s)?`)) return;
+    for (const tx of pendentes) {
+      const sug = sugestoes[tx.id];
+      await saveClassification(tx, sug.l1, sug.l2);
+    }
+  };
+
   const saveConfig = async () => {
     setSavingConfig(true);
     setError('');
@@ -130,6 +165,7 @@ export default function ClassificarPage({ params }) {
   });
 
   const classifiedCount = transactions.filter((t) => t.classificacaoL1 && t.classificacaoL2).length;
+  const pendentesCount = filtered.filter(sugerePendente).length;
 
   if (loading) {
     return (
@@ -177,6 +213,13 @@ export default function ClassificarPage({ params }) {
             <Settings className="w-3.5 h-3.5" />
             Configurar
           </button>
+          <Link
+            href={`/clients/${id}/regras`}
+            className="inline-flex items-center gap-1.5 text-gray-600 border border-gray-300 hover:bg-gray-50 px-3 py-2 rounded-lg text-xs font-medium transition-colors"
+          >
+            <Wand2 className="w-3.5 h-3.5" />
+            Regras
+          </Link>
           <Link
             href={`/clients/${id}`}
             className="inline-flex items-center gap-1.5 text-blue-600 border border-blue-200 bg-blue-50 hover:bg-blue-100 px-3 py-2 rounded-lg text-xs font-medium transition-colors"
@@ -276,6 +319,16 @@ export default function ClassificarPage({ params }) {
                   </span>
                 )}
               </p>
+              {pendentesCount > 0 && (
+                <button
+                  onClick={applyAllSuggestions}
+                  disabled={savingId !== null}
+                  className="inline-flex items-center gap-1.5 text-xs font-medium text-violet-700 border border-violet-200 bg-violet-50 hover:bg-violet-100 px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50"
+                >
+                  <Wand2 className="w-3.5 h-3.5" />
+                  Aplicar {pendentesCount} sugestão(ões)
+                </button>
+              )}
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
@@ -287,94 +340,129 @@ export default function ClassificarPage({ params }) {
                     <th className="px-4 py-3 font-semibold text-gray-600 text-right whitespace-nowrap">Valor</th>
                     <th className="px-4 py-3 font-semibold text-gray-600">Banco</th>
                     <th className="px-4 py-3 font-semibold text-gray-600">Categoria Klavi</th>
+                    <th className="px-4 py-3 font-semibold text-gray-600">Sugestão</th>
                     <th className="px-4 py-3 font-semibold text-gray-600">Classificação</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {filtered.map((tx) => (
-                    <tr
-                      key={tx.id}
-                      className="border-b border-gray-100 hover:bg-gray-50 transition-colors"
-                    >
-                      <td className="px-4 py-2.5 text-gray-500 whitespace-nowrap text-xs">
-                        {formatDate(tx.date)}
-                      </td>
-                      <td className="px-4 py-2.5 text-gray-900 max-w-xs">
-                        <span className="block truncate" title={tx.description}>
-                          {tx.description}
-                        </span>
-                      </td>
-                      <td className="px-4 py-2.5">
-                        <span
-                          className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${
-                            tx.type === 'CREDIT'
-                              ? 'bg-green-100 text-green-800'
-                              : 'bg-red-100 text-red-800'
+                  {filtered.map((tx) => {
+                    const sug = sugestoes[tx.id];
+                    const sugValida = sug && (CLASSIFICACOES[sug.l1] || []).includes(sug.l2);
+                    const jaAplicada = sugValida && tx.classificacaoL1 === sug.l1 && tx.classificacaoL2 === sug.l2;
+                    return (
+                      <tr
+                        key={tx.id}
+                        className="border-b border-gray-100 hover:bg-gray-50 transition-colors"
+                      >
+                        <td className="px-4 py-2.5 text-gray-500 whitespace-nowrap text-xs">
+                          {formatDate(tx.date)}
+                        </td>
+                        <td className="px-4 py-2.5 text-gray-900 max-w-xs">
+                          <span className="block truncate" title={tx.description}>
+                            {tx.description}
+                          </span>
+                        </td>
+                        <td className="px-4 py-2.5">
+                          <span
+                            className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${
+                              tx.type === 'CREDIT'
+                                ? 'bg-green-100 text-green-800'
+                                : 'bg-red-100 text-red-800'
+                            }`}
+                          >
+                            {tx.type === 'CREDIT' ? 'Entrada' : 'Saída'}
+                          </span>
+                        </td>
+                        <td
+                          className={`px-4 py-2.5 text-right font-semibold whitespace-nowrap ${
+                            tx.type === 'CREDIT' ? 'text-green-700' : 'text-red-700'
                           }`}
                         >
-                          {tx.type === 'CREDIT' ? 'Entrada' : 'Saída'}
-                        </span>
-                      </td>
-                      <td
-                        className={`px-4 py-2.5 text-right font-semibold whitespace-nowrap ${
-                          tx.type === 'CREDIT' ? 'text-green-700' : 'text-red-700'
-                        }`}
-                      >
-                        {tx.type === 'CREDIT' ? '+' : '-'}
-                        {formatCurrency(Math.abs(tx.amount))}
-                      </td>
-                      <td className="px-4 py-2.5 text-gray-500 text-xs whitespace-nowrap">
-                        {tx.institutionName || '—'}
-                      </td>
-                      <td className="px-4 py-2.5 text-gray-400 text-xs whitespace-nowrap">
-                        {tx.categoryL2 || tx.categoryL1 || '—'}
-                      </td>
-                      <td className="px-4 py-2.5 whitespace-nowrap">
-                        <div className="flex items-center gap-1.5">
-                          <select
-                            value={tx.classificacaoL1 || ''}
-                            disabled={savingId === tx.id}
-                            onChange={(e) => {
-                              const l1 = e.target.value || null;
-                              saveClassification(tx, l1, null);
-                            }}
-                            className="border border-gray-300 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-violet-500 bg-white"
-                          >
-                            <option value="">—</option>
-                            {Object.keys(CLASSIFICACOES).map((grupo) => (
-                              <option key={grupo} value={grupo}>
-                                {grupo}
-                              </option>
-                            ))}
-                          </select>
-                          <select
-                            value={tx.classificacaoL2 || ''}
-                            disabled={savingId === tx.id || !tx.classificacaoL1}
-                            onChange={(e) => {
-                              const l2 = e.target.value || null;
-                              saveClassification(tx, tx.classificacaoL1, l2);
-                            }}
-                            className="border border-gray-300 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-violet-500 bg-white disabled:opacity-50"
-                          >
-                            <option value="">—</option>
-                            {(CLASSIFICACOES[tx.classificacaoL1] || []).map((cat) => (
-                              <option key={cat} value={cat}>
-                                {cat}
-                              </option>
-                            ))}
-                          </select>
-                          {savingId === tx.id ? (
-                            <Loader2 className="w-3.5 h-3.5 text-violet-500 animate-spin" />
-                          ) : savedId === tx.id ? (
-                            <Check className="w-3.5 h-3.5 text-green-600" />
-                          ) : null}
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
+                          {tx.type === 'CREDIT' ? '+' : '-'}
+                          {formatCurrency(Math.abs(tx.amount))}
+                        </td>
+                        <td className="px-4 py-2.5 text-gray-500 text-xs whitespace-nowrap">
+                          {tx.institutionName || '—'}
+                        </td>
+                        <td className="px-4 py-2.5 text-gray-400 text-xs whitespace-nowrap">
+                          {tx.categoryL2 || tx.categoryL1 || '—'}
+                        </td>
+                        <td className="px-4 py-2.5 whitespace-nowrap">
+                          {sugValida ? (
+                            <div className="flex items-center gap-1.5">
+                              <span
+                                className="inline-flex items-center gap-1 bg-amber-50 border border-amber-200 text-amber-800 px-2 py-0.5 rounded-full text-xs font-medium"
+                                title={`Origem da sugestão: ${sug.origem}`}
+                              >
+                                <Sparkles className="w-3 h-3" />
+                                {sug.l1} › {sug.l2}
+                              </span>
+                              <span className="text-[10px] text-gray-400">
+                                {Math.round((sug.confianca || 0) * 100)}%
+                              </span>
+                              {!jaAplicada && (
+                                <button
+                                  onClick={() => saveClassification(tx, sug.l1, sug.l2)}
+                                  disabled={savingId === tx.id}
+                                  className="text-xs text-violet-700 border border-violet-200 bg-violet-50 hover:bg-violet-100 px-2 py-0.5 rounded-lg font-medium transition-colors disabled:opacity-50"
+                                >
+                                  Aplicar
+                                </button>
+                              )}
+                            </div>
+                          ) : (
+                            <span className="text-xs text-gray-300">
+                              {loadingSugestoes ? '...' : '—'}
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-4 py-2.5 whitespace-nowrap">
+                          <div className="flex items-center gap-1.5">
+                            <select
+                              value={tx.classificacaoL1 || ''}
+                              disabled={savingId === tx.id}
+                              onChange={(e) => {
+                                const l1 = e.target.value || null;
+                                saveClassification(tx, l1, null);
+                              }}
+                              className="border border-gray-300 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-violet-500 bg-white"
+                            >
+                              <option value="">—</option>
+                              {Object.keys(CLASSIFICACOES).map((grupo) => (
+                                <option key={grupo} value={grupo}>
+                                  {grupo}
+                                </option>
+                              ))}
+                            </select>
+                            <select
+                              value={tx.classificacaoL2 || ''}
+                              disabled={savingId === tx.id || !tx.classificacaoL1}
+                              onChange={(e) => {
+                                const l2 = e.target.value || null;
+                                saveClassification(tx, tx.classificacaoL1, l2);
+                              }}
+                              className="border border-gray-300 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-violet-500 bg-white disabled:opacity-50"
+                            >
+                              <option value="">—</option>
+                              {(CLASSIFICACOES[tx.classificacaoL1] || []).map((cat) => (
+                                <option key={cat} value={cat}>
+                                  {cat}
+                                </option>
+                              ))}
+                            </select>
+                            {savingId === tx.id ? (
+                              <Loader2 className="w-3.5 h-3.5 text-violet-500 animate-spin" />
+                            ) : savedId === tx.id ? (
+                              <Check className="w-3.5 h-3.5 text-green-600" />
+                            ) : null}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
                   {filtered.length === 0 && (
                     <tr>
-                      <td colSpan={7} className="text-center py-10 text-gray-400">
+                      <td colSpan={8} className="text-center py-10 text-gray-400">
                         Nenhuma transação corresponde aos filtros
                       </td>
                     </tr>
