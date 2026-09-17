@@ -20,6 +20,7 @@ import {
   AlertCircle,
   List,
   Server,
+  Tags,
 } from 'lucide-react';
 
 export default function Dashboard() {
@@ -477,6 +478,13 @@ export default function Dashboard() {
                         >
                           <FileText className="w-3.5 h-3.5" />
                           Ver Extrato
+                        </Link>
+                        <Link
+                          href={`/clients/${client.id}/classificar`}
+                          className="inline-flex items-center gap-1.5 text-violet-600 border border-violet-200 bg-violet-50 hover:bg-violet-100 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors"
+                        >
+                          <Tags className="w-3.5 h-3.5" />
+                          Classificar
                         </Link>
                         <button
                           onClick={() => deleteClient(client.id, client.name)}

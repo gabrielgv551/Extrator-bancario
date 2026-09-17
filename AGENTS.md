@@ -24,6 +24,7 @@ app/
   page.jsx                          → Dashboard administrativo (lista de clientes)
   login/page.jsx                    → Tela de login do admin
   clients/[id]/page.jsx             → Extrato detalhado do cliente (admin)
+  clients/[id]/classificar/page.jsx → Classificação manual de receitas/despesas do cliente (admin)
   portal/[token]/page.jsx           → Portal público do cliente (conectar bancos)
   layout.jsx                        → Root layout (lang="pt-BR")
   not-found.jsx                     → Página 404
@@ -34,6 +35,7 @@ app/
     clients/route.js                → CRUD de clientes
     clients/[id]/route.js           → GET/PUT/DELETE de cliente
     clients/[id]/transactions/route.js   → Busca e persiste transações via Pluggy
+    clients/[id]/transactions/[txId]/route.js → Atualiza classificação manual (Receita/Despesa) de uma transação
     clients/[id]/export/route.js    → Exporta extrato para CSV
     clients/[id]/export-json/route.js    → Exporta extrato para JSON (protegido por CRON_SECRET)
     clients/[id]/loans/route.js     → Lista empréstimos e parcelas do cliente
@@ -54,6 +56,7 @@ lib/
   cron-sync.js                      → Motor de sincronização multi-tenant (Klavi + Pluggy) reutilizável entre cron, scripts e AWS Batch
   pluggy.js                         → Wrapper da API Pluggy (auth, contas, transações, investimentos, dívidas)
   storage.js                        → Camada de persistência PostgreSQL (clients, items, transactions, investments, debts, sync_logs, sync_locks)
+  classification.js                 → Lista pré-definida de classificação manual (Receita/Despesa) usada na página de classificação
 
 scripts/
   setup-db.mjs                      → Cria banco e tabelas PostgreSQL
@@ -136,6 +139,8 @@ O banco `extratos` roda em PostgreSQL. O script `scripts/setup-db.mjs` cria/atua
 - `investments` — investimentos
 - `debts` — empréstimos e dívidas (contas LOAN + derivadas de transações parceladas)
 - `all_transactions` — view que une `transactions` + `credit_transactions`
+- `extrato` — view de relatório com colunas amigáveis (inclui `classificacao_l1`/`classificacao_l2`)
+- `classificacao_l1`/`classificacao_l2` — colunas de classificação manual (Receita/Despesa) em ambas as tabelas de transações; não são sobrescritas pelo sync (somente leitura/escrita via página de classificação)
 
 Índices importantes: `client_id + date DESC` em ambas as tabelas de transações.
 
@@ -221,6 +226,10 @@ node scripts/link-empresas.mjs set "Nome Cliente" empresa
 
 # Aplicar schema atual em todos os bancos de empresas ativas (use após alterar lib/setup-company-db.js)
 node scripts/apply-schema-all.mjs
+
+# Backfill de razão social (CNPJ → razão social) em transações já persistidas
+node scripts/enrich-cnpj-backfill.mjs --empresa eletroar   # uma empresa
+node scripts/enrich-cnpj-backfill.mjs --all                # todas as ativas
 ```
 
 ---
