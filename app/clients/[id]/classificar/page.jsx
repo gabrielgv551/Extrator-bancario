@@ -52,6 +52,13 @@ export default function ClassificarPage({ params }) {
   const formatCurrency = (amount) =>
     new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(amount);
 
+  const formatDoc = (doc) => {
+    const d = (doc || '').replace(/\D/g, '');
+    if (d.length === 14) return d.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, '$1.$2.$3/$4-$5');
+    if (d.length === 11) return d.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4');
+    return doc || '—';
+  };
+
   const fetchClient = useCallback(async () => {
     const res = await fetch(`/api/clients/${id}`);
     if (res.ok) {
@@ -441,6 +448,8 @@ export default function ClassificarPage({ params }) {
                     <th className="px-4 py-3 font-semibold text-gray-600">Tipo</th>
                     <th className="px-4 py-3 font-semibold text-gray-600 text-right whitespace-nowrap">Valor</th>
                     <th className="px-4 py-3 font-semibold text-gray-600">Banco</th>
+                    <th className="px-4 py-3 font-semibold text-gray-600 whitespace-nowrap">Razão Social</th>
+                    <th className="px-4 py-3 font-semibold text-gray-600 whitespace-nowrap">CNPJ/CPF</th>
                     <th className="px-4 py-3 font-semibold text-gray-600">Categoria Klavi</th>
                     <th className="px-4 py-3 font-semibold text-gray-600">Sugestão</th>
                     <th className="px-4 py-3 font-semibold text-gray-600">Classificação</th>
@@ -485,6 +494,14 @@ export default function ClassificarPage({ params }) {
                         </td>
                         <td className="px-4 py-2.5 text-gray-500 text-xs whitespace-nowrap">
                           {tx.institutionName || '—'}
+                        </td>
+                        <td className="px-4 py-2.5 text-gray-500 text-xs max-w-[180px]">
+                          <span className="block truncate" title={tx.counterpartyName}>
+                            {tx.counterpartyName || '—'}
+                          </span>
+                        </td>
+                        <td className="px-4 py-2.5 text-gray-500 text-xs whitespace-nowrap">
+                          {formatDoc(tx.counterpartyDocument)}
                         </td>
                         <td className="px-4 py-2.5 text-gray-400 text-xs whitespace-nowrap">
                           {tx.categoryL2 || tx.categoryL1 || '—'}
@@ -564,7 +581,7 @@ export default function ClassificarPage({ params }) {
                   })}
                   {filtered.length === 0 && (
                     <tr>
-                      <td colSpan={8} className="text-center py-10 text-gray-400">
+                      <td colSpan={10} className="text-center py-10 text-gray-400">
                         Nenhuma transação corresponde aos filtros
                       </td>
                     </tr>
